@@ -1,1 +1,10 @@
 WEEK 1
+Notes:
+- INTEGRAL is in a highly elliptical orbit, spends most its time far from Earth => max observation time of ~ 2.5 days
+- compare jupiter time scale variations (literature) to science windows (need to either split or combine the science windows)
+
+To-do : 
+- finish tutorial, especially part on science windows query
+- look at how to use tokens
+- get Jupiter coordinates over time, find science windows that contain Jupiter using coordinates (search radius of roughly 50 degrees).
+- check literature for expected timescale variation of Jupiter X-ray emission 
