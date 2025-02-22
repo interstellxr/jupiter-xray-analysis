@@ -14,7 +14,6 @@ Articles:
 - A study of Jupiter’s aurorae with XMM-Newton: https://www.aanda.org/articles/aa/pdf/2007/08/aa6406-06.pdf
 - X-Ray Emissions from Jupiter: https://ntrs.nasa.gov/citations/20020034467
 - X-ray Emissions from the Jovian System: https://arxiv.org/abs/2208.13455
-- 
 
 ## tokens
 The file .oda-token should be refreshed daily. A token can be generated on the MMODA website.
