@@ -8,5 +8,6 @@ Notes:
 To-do : 
 [X] finish tutorial, especially part on science windows query 
 [X] look at how to use tokens 
+[X] check literature for expected timescale variation of Jupiter X-ray emission
 [ ] get Jupiter coordinates over time, find science windows that contain Jupiter using coordinates (search radius of roughly 50 degrees).
-[ ] check literature for expected timescale variation of Jupiter X-ray emission 
+ 
