@@ -14,6 +14,7 @@ Articles:
 - Low- to middle-latitude X-ray emission from Jupiter: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2006JA011792
 - A study of Jupiter’s aurorae with XMM-Newton: https://www.aanda.org/articles/aa/pdf/2007/08/aa6406-06.pdf
 - X-ray Emissions from the Jovian System: https://arxiv.org/abs/2208.13455
+- A pulsating auroral X-ray hot spot on Jupiter: https://www.nature.com/articles/4151000a
 
 A very good overview/summary of the above articles and others: https://cxc.harvard.edu/newsletters/news_27/article1.html
 
