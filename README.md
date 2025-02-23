@@ -12,7 +12,6 @@ Articles:
 - Observation and origin of non-thermal hard X-rays from Jupiter: https://www.nature.com/articles/s41550-021-01594-8  
 - Low- to middle-latitude X-ray emission from Jupiter: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2006JA011792
 - A study of Jupiter’s aurorae with XMM-Newton: https://www.aanda.org/articles/aa/pdf/2007/08/aa6406-06.pdf
-- X-Ray Emissions from Jupiter: https://ntrs.nasa.gov/citations/20020034467
 - X-ray Emissions from the Jovian System: https://arxiv.org/abs/2208.13455
 
 ## tokens
