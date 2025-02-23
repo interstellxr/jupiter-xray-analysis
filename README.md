@@ -4,6 +4,7 @@ TPIVb project at EPFL with the purpose of analyzing data provided by the INTEGRA
 ## some important links
 API documentation: https://oda-api.readthedocs.io/en/latest/  
 MMODA: https://www.astro.unige.ch/mmoda/  
+Article summaries: https://docs.google.com/document/d/1Lwd9mXqzKYKDE4VaOx93JynVrsqpzkFtzbT6kAd9tWk/edit?usp=sharing
 
 Articles:  
 - Discovery of diffuse hard X-ray emission around Jupiter with Suzaku: https://iopscience.iop.org/article/10.1088/2041-8205/709/2/L178/meta  
