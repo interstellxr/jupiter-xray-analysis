@@ -9,7 +9,6 @@ Article summaries: https://docs.google.com/document/d/1Lwd9mXqzKYKDE4VaOx93JynVr
 Articles:  
 - Discovery of diffuse hard X-ray emission around Jupiter with Suzaku: https://iopscience.iop.org/article/10.1088/2041-8205/709/2/L178/meta  
 - The detection of X rays from Jupiter: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/JA088iA10p07731  
-- Upper limits for X - ray and energetic neutral particle emission from Jupiter: Voyager-1 results: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/GL008i002p00169  
 - Observation and origin of non-thermal hard X-rays from Jupiter: https://www.nature.com/articles/s41550-021-01594-8  
 - Low- to middle-latitude X-ray emission from Jupiter: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2006JA011792
 - A study of Jupiter’s aurorae with XMM-Newton: https://www.aanda.org/articles/aa/pdf/2007/08/aa6406-06.pdf
