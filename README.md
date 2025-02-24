@@ -4,7 +4,7 @@ TPIVb project at EPFL with the purpose of analyzing data provided by the INTEGRA
 ## Some important links
 API documentation: https://oda-api.readthedocs.io/en/latest/  
 MMODA: https://www.astro.unige.ch/mmoda/  
-INTEGRAL notes: [https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?tab=t.0](https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?usp=sharing)
+INTEGRAL notes: [https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?tab=t.0](https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?usp=sharing)  
 Article summaries: https://docs.google.com/document/d/1Lwd9mXqzKYKDE4VaOx93JynVrsqpzkFtzbT6kAd9tWk/edit?usp=sharing
 
 ## Consulted references:  
