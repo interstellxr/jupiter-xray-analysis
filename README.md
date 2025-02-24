@@ -5,7 +5,8 @@ TPIVb project at EPFL with the purpose of analyzing data provided by the INTEGRA
 API documentation: https://oda-api.readthedocs.io/en/latest/  
 MMODA: https://www.astro.unige.ch/mmoda/  
 INTEGRAL notes: [https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?tab=t.0](https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?usp=sharing)  
-Article summaries: https://docs.google.com/document/d/1Lwd9mXqzKYKDE4VaOx93JynVrsqpzkFtzbT6kAd9tWk/edit?usp=sharing
+Article summaries: https://docs.google.com/document/d/1Lwd9mXqzKYKDE4VaOx93JynVrsqpzkFtzbT6kAd9tWk/edit?usp=sharing  
+ScWs: https://www.isdc.unige.ch/browse/W3Browse/integral-rev2/integral_rev2_scw.html
 
 ## Consulted references:  
 - Discovery of diffuse hard X-ray emission around Jupiter with Suzaku: https://iopscience.iop.org/article/10.1088/2041-8205/709/2/L178/meta  
