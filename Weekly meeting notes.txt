@@ -1,5 +1,10 @@
-WEEK 1
-Notes:
+WEEK 1 ------------------------------------------------------------------------------------------------
+What I did:
+- Read some literature on X-ray observations of Venus and Jupiter
+- Read articles and noted information on INTEGRAL and its instruments
+- Started the ODA/API tutorial
+
+Meeting notes:
 - INTEGRAL is in a highly elliptical orbit, spends most its time far from Earth => max observation time of ~ 2.5 days
 - compare jupiter time scale variations (literature) to science windows (need to either split or combine the science windows)
 - we will mostly be interested in images, not light curves (basically many images)
@@ -11,3 +16,20 @@ To-do :
 [X] check literature for expected timescale variation of Jupiter X-ray emission
 [ ] get Jupiter coordinates over time, find science windows that contain Jupiter using coordinates (search radius of roughly 50 degrees).
  
+WEEK 2 ------------------------------------------------------------------------------------------------
+What I did:
+- Finished the ODA/API tutorial
+- Read more literature and did summaries, found many information on Jupiter's X-rays and time variability
+- Used JPL's Horizons module with astroquery to get Jupiter's ephemerides
+- Obtained initial ISGRI data (arbitrary times) where Jupiter is present within a certain search radius
+- Since I query Jupiter's position from Earth and not INTEGRAL, I looked at the maximum angular error
+due to the seperation between INTEGRAL and Earth
+
+Meeting notes:
+- 
+
+To-do:
+[] Read some literature on higher energy X-rays (ISGRI is > 15 keV)
+[] 
+
+WEEK 3 ------------------------------------------------------------------------------------------------
