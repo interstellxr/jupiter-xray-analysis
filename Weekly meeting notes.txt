@@ -29,7 +29,6 @@ Meeting notes:
 - 
 
 To-do:
-[] Study time variability of jupiter on ~ 45 minute timescales => stacking?
-[] Study time variability of jupiter on ~ 11 year (solar cycle) timescales ?
+[] use online platform to get ScWs containing Jupiter. Download lists year by year.
 
 WEEK 3 ------------------------------------------------------------------------------------------------
