@@ -21,14 +21,23 @@ What I did:
 - Finished the ODA/API tutorial
 - Read more literature and did summaries, found many information on Jupiter's X-rays and time variability
 - Used JPL's Horizons module with astroquery to get Jupiter's ephemerides
-- Obtained initial ISGRI data (arbitrary times) where Jupiter is present within a certain search radius
 - Since I query Jupiter's position from Earth and not INTEGRAL, I looked at the maximum angular error
 due to the seperation between INTEGRAL and Earth
+- Had some problems with astroquery (specifying time interval does not work). Initially started to use HEASARC online query.
+- Obtained initial ISGRI data where Jupiter is present within a certain search radius (found ScW online)
+- Finally: I decided to retrieve ScWs corresponding to Jupiter's position on a monthly basis, then filter out the ScWs by 
+matching the month of the observation to the monthly position of Jupiter
+
+To-do:
+[] Now that I can get ScWs containing Jupiter, I need to analyze them. I have the metadata I need also. I can look at durations, 
+and I can also get light curves. But light curves only for the object being observed? To check! 
+
+WEEK 3 ------------------------------------------------------------------------------------------------
+What I did:
+- 
 
 Meeting notes:
 - 
 
 To-do:
-[] use online platform to get ScWs containing Jupiter. Download lists year by year.
-
-WEEK 3 ------------------------------------------------------------------------------------------------
+[]
