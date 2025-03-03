@@ -34,7 +34,10 @@ and I can also get light curves. But light curves only for the object being obse
 
 WEEK 3 ------------------------------------------------------------------------------------------------
 What I did:
-- 
+- Finished code for getting ScWs containing Jupiter over given time period. Ran the code for 2003-2024, took 20 minutes 
+and now I have all ScWs with Jupiter in the FOV (using 8 degree search radius).
+- Managed to read and image some ScWs from the saved file. Understood the metadata (image, variance, significance, exposure).
+- Got some light curves and spectra also.
 
 Meeting notes:
 - 
