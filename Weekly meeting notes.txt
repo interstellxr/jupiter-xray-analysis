@@ -37,10 +37,16 @@ What I did:
 - Finished code for getting ScWs containing Jupiter over given time period. Ran the code for 2003-2024, took 20 minutes 
 and now I have all ScWs with Jupiter in the FOV (using 8 degree search radius).
 - Managed to read and image some ScWs from the saved file. Understood the metadata (image, variance, significance, exposure).
-- Got some light curves and spectra also.
+- 
 
 Meeting notes:
 - 
 
 To-do:
-[]
+My ideas: 
+- Study long term variability (solar cycle of ~ 11 years) => stack images month by month maybe?
+- Stacking: to stack n images, I need to query the n images and choose a reference image for Jupiter (known coords). 
+Need to convert Jupiter's coords to pixel coordinates and apply a transformation on all images except the reference. 
+Then stack (average).
+- For short-term variability, better to work with light curves for exposures longer than the timescale (~ 45 min).
+But for light curves, how do these work? Because they're for the observed object right?
