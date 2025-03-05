@@ -29,7 +29,7 @@ due to the seperation between INTEGRAL and Earth
 matching the month of the observation to the monthly position of Jupiter
 
 To-do:
-[] Now that I can get ScWs containing Jupiter, I need to analyze them. I have the metadata I need also. I can look at durations, 
+[X] Now that I can get ScWs containing Jupiter, I need to analyze them. I have the metadata I need also. I can look at durations, 
 and I can also get light curves. But light curves only for the object being observed? To check! 
 
 WEEK 3 ------------------------------------------------------------------------------------------------
@@ -47,6 +47,9 @@ Need to convert Jupiter's coords to pixel coordinates and apply a transformation
 Then stack (average).
 - For short-term variability, better to work with light curves for exposures longer than the timescale (~ 45 min).
 But for light curves, how do these work? Because they're for the observed object right?
+- Use Optical Monitoring Camera to confirm Jupiter's position? Maybe not possible due to small FOV?
+- For now looking at IBIS data (high energies > 15 keV). Jupiter's emission is low energy (~< 3 keV). Look at JEM-X data?
+- I read today INTEGRAL got deactivated 28/02/2025 :-(
 
 Meeting notes:
 - 
