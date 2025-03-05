@@ -46,13 +46,21 @@ My ideas for what to do next:
 Need to convert Jupiter's coords to pixel coordinates and apply a transformation on all images except the reference. 
 Then stack (average).
 - For short-term variability, better to work with light curves for exposures longer than the timescale (~ 45 min).
-But for light curves, how do these work? Because they're for the observed object right?
+But for light curves, how do these work? Because they're for the observed object right? So not sure about small timescales.
 - Use Optical Monitoring Camera to confirm Jupiter's position? Maybe not possible due to small FOV?
 - For now looking at IBIS data (high energies > 15 keV). Jupiter's emission is low energy (~< 3 keV). Look at JEM-X data?
 - I read today INTEGRAL got deactivated 28/02/2025 :-(
 
 Meeting notes:
-- 
+- Check variance accuracy through intensity map (std of box around source)
+- Extract the countrate + uncertainty at point of source (as function of time)
+- Also try to get countrate straight from query by passing source to catalog/query (see examples), will also give image
+- Compare the above two
+- This countrate is just counts per detector => need to convert to flux (photons/area/time). Then this can be compared to other data.
+For the conversion: take observation of source with known flux (crab), make image, extract countrate, learn what is actual flux (in that energy range).
+See paper by jordain et al about SPI (1e-8 erg/cm2/s, 20-80 keV range). Take the model, integrate over energy range.
+- Do same things for JEM-X
+- Significant peak: above ~ 5 sigma (make sure not just statistical noise)
 
 To-do:
 [] ...
