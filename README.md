@@ -18,3 +18,4 @@ ScWs: https://www.isdc.unige.ch/browse/W3Browse/integral-rev2/integral_rev2_scw.
 - A pulsating auroral X-ray hot spot on Jupiter: https://www.nature.com/articles/4151000a
 - A very good overview/summary of the above articles and others: https://cxc.harvard.edu/newsletters/news_27/article1.html
 - Astroquery docs: https://astroquery.readthedocs.io/en/latest/index.html
+- INTEGRAL Cross-calibration Status: Crab observations between 3 keV and 1 MeV: https://arxiv.org/pdf/0810.0646v1
