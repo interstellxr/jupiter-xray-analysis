@@ -68,6 +68,7 @@ To-do:
 [] Compare the calculated and extracted variances
 [] Obtain countrate by passing source to catalog (check examples)
 [] Compare the two countrates
-[] Convert countrate to flux using crab nebula
+[X] Convert countrate to flux using crab nebula
+[] Once you figure out all that, do the same for JEM-X
 
 WEEK 3 ------------------------------------------------------------------------------------------------
