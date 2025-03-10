@@ -64,8 +64,8 @@ See paper by jordain et al about SPI (1e-8 erg/cm2/s, 20-80 keV range). Take the
 
 To-do:
 [] Obtain variance manually through intensity
-[] Extract countrate and uncertainty at the source as function of time (figure it out)
 [] Compare the calculated and extracted variances
+[] Extract countrate and uncertainty at the source as function of time (multiple ScWs)
 [] Obtain countrate by passing source to catalog (check examples)
 [] Compare the two countrates
 [X] Convert countrate to flux using crab nebula
