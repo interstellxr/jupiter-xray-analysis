@@ -74,7 +74,10 @@ WEEK 3 -------------------------------------------------------------------------
 This week's notes:
 - Had some problems as we discussed via email
 - Fixed: crab ScW selection (ends with 0), hardcode catalog for Jupiter
-- Not fixed: obtaining images for multiple ScWs using asynchronous querying (returning not the right images),
+- Not fixed: obtaining images for multiple ScWs using asynchronous querying (returning blank images),
 WCS problem (too low countrate for the crab, but conversion code is correct)
-- Obtained light curve: next steps: get other light curves for other ScWs and see if the behavior is similar,
+- Obtained light curves: next steps: get other light curves for other ScWs and see if the behavior is similar,
 for a given scw, get lightcurves on random points for comparison (I know this is something done for exoplanet transits)
+
+Meeting notes:
+- 
