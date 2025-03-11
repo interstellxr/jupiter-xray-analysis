@@ -63,12 +63,11 @@ See paper by jordain et al about SPI (1e-8 erg/cm2/s, 20-80 keV range). Take the
 - Significant peak: above ~ 5 sigma (make sure not just statistical noise)
 
 To-do:
-[X] Convert countrate to flux using crab nebula
-[X] Obtain variance manually through intensity
-[] Compare the calculated and extracted variances
-[] Extract countrate and uncertainty at the source as function of time (multiple ScWs)
-[] Obtain countrate by passing source to catalog (check examples)
-[] Compare the two countrates
+[X] Convert countrate to flux using crab nebula (CrabAnalysis.ipynb)
+[X] Obtain variance manually through intensity (ScWAnalysis.ipynb)
+[X] Compare the calculated and extracted variances (ScWAnalysis.ipynb)
+[X] Obtain countrate by passing source to catalog (JupiterLC.ipynb)
+[] Extract countrate and uncertainty at the source over multiple ScWs (ScWscombined.ipynb)
 [] Once you figure out all that, do the same for JEM-X
 
 WEEK 3 ------------------------------------------------------------------------------------------------
