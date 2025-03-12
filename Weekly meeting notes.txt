@@ -80,4 +80,22 @@ WCS problem (too low countrate for the crab, but conversion code is correct)
 for a given scw, get lightcurves on random points for comparison (I know this is something done for exoplanet transits)
 
 Meeting notes:
-- 
+- long term LCs from isgri_lc and from extracting directly from images
+- when bright sources in fov, add jupiter to outputted catalog 
+- for better collaborating use github issues / add as developer
+- do same for crab nebula to compare (test your method)
+- get Jupiter's seperation from pointing direction (all ScWs) over time
+- instrument response changes over time (over integral's telescope). Use conversion factor
+(using crab as standard calibrator which is mostly constant). Compute every year or a bit less 
+and use it to offset instrument response. For short term, bkgd is subtracted.
+- for crab radial offset: should show observations are twice a year 
+(no observations when close or opposite sun)
+- only use OSA11.2 (remove condition)
+
+To-do:
+[] Get longterm LCs using both isgri_lc (passing Jupiter to catalog) and images
+[] Compare the above two
+[] Do the same for the Crab (make code to query all crab ScWs and store them like for Jupiter)
+[] For the crab, get the countrate twice each year for flux conversion
+[] Plot Jupiter's angular offset (distance between Jupiter and pointing direction) over time
+[] Same for the Crab
