@@ -93,9 +93,25 @@ and use it to offset instrument response. For short term, bkgd is subtracted.
 - only use OSA11.2 (remove condition)
 
 To-do:
-[] Get longterm LCs using both isgri_lc (passing Jupiter to catalog) and images
-[] Compare the above two
-[] Do the same for the Crab (make code to query all crab ScWs and store them like for Jupiter)
+[X] Obtained Crab ScWs and plotted monthly distribution
+[] Get longterm LCs using both isgri_lc (passing to catalog) and images 
+    [] Crab
+    [] Jupiter
 [] For the crab, get the countrate twice each year for flux conversion
 [] Plot Jupiter's angular offset (distance between Jupiter and pointing direction) over time
-[] Same for the Crab
+
+WEEK 4 ------------------------------------------------------------------------------------------------
+My notes:
+- Crab analysis
+    -> Need to write a code to asynchronously query light curves (time bins = ScW durations) and images for
+    one ScW per month every year. ScWs on the Crab are present for ~ 6 months per year over 22 years so
+    this gives ~ 120 ScWs to query.
+    -> Once finished, this gives the long term light curve of the crab for both methods
+    -> Compare the two methods and make sure they are consistent with each other
+    -> Study the variability and use the values for yearl or bi-yearly flux conversion (averaging)
+    -> Also get a few short term light curves
+- Jupiter analysis
+    -> Long term light curves using same method as the Crab
+    -> Plot angular offset over time
+    -> More short term lightcurves
+
