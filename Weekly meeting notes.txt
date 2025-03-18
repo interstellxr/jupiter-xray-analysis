@@ -121,3 +121,6 @@ Problems encountered:
     -> one problem at least is when taking the ~ 5 first ScWs and ~ 10 last ScWs of a revolution. 
     This is when the telescope crosses radiation belts.
     -> another is that the good_isgri condition doesnt work in astroquery. Need to do it after like for the times.
+
+I have updated my ScW selection to choose good_isgri as being > 1000. This leads to not as many ScWs (812 for Jupiter).
+I also added code for taking PPPP > 0005 (not the first 5). Not sure how to do for not the last 10 as max PPPP varies.
