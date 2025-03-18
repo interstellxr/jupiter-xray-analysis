@@ -115,3 +115,9 @@ My notes:
     -> Plot angular offset over time
     -> More short term lightcurves
 
+Problems encountered:
+- DispatcherException => due to problems server-side? Resolved within a day, but appeared again briefly.
+- AnalysisException => main standing problem
+    -> one problem at least is when taking the ~ 5 first ScWs and ~ 10 last ScWs of a revolution. 
+    This is when the telescope crosses radiation belts.
+    -> another is that the good_isgri condition doesnt work in astroquery. Need to do it after like for the times.
