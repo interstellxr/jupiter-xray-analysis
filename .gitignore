@@ -1,3 +1,3 @@
 *.fits
 .oda-token
-/data/*
+/data/*data/*
