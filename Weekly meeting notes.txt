@@ -122,5 +122,36 @@ Problems encountered:
     This is when the telescope crosses radiation belts.
     -> another is that the good_isgri condition doesnt work in astroquery. Need to do it after like for the times.
 
-I have updated my ScW selection to choose good_isgri as being > 1000. This leads to not as many ScWs (812 for Jupiter).
-I also added code for taking PPPP > 0005 (not the first 5). Not sure how to do for not the last 10 as max PPPP varies.
+- I have updated my ScW selection to choose good_isgri as being > 1000. This leads to not as many ScWs (~ 800 for Jupiter).
+- I also added code for taking PPPP > 0005 (not the first 5). Not sure how to do for not the last 10 as max PPPP varies.
+- Need to replicate what I have done for the Crab on Jupiter + run light curve method & compare
+- Need to fix ScW selection (added ra and dec values, same ones for multiple ScWs)
+- I'll disable the emails
+
+Meeting notes:
+- can fit psf using gaussian but only amplitude
+- also for jupiter but with smeared gaussian (sum of many gaussians)
+- for variance from images, also take variance around the pixel (annular or other) and plot
+
+- for PPPP upper bound, look at max PPPP for each revolution so do per revolution
+- first try psf fitting and compare to pixel fitting with crab before moving to jupiter
+- stacking: map to new grid
+    - average? best to do weighted average (by error), rate divided by variance etc (see variance weighted mean)
+    - not possible to get an actual mean flux 
+    - monthly first could be good
+
+- parallax error is actually significant when considering PSF!! sub-pixel resolution!
+    - to take into account: get INTEGRAL's position: https://www.astro.unige.ch/mmoda/dispatch-data/gw/scsystem/api/v1.0/sc/2024-03-15T20:10:44/0/0
+    - astropy to convert Jupiter coordinates on Earth to the coordinates from the satellite
+
+Process for getting precise Jupiter position:
+- first, dont change how you are getting the ScWs. You get monthly positions with 8deg search radius.
+- then, from the obtained ScWs, get the precise dates, and from them you get Jupiter's positon for each ScW 
+- you have precise positions of Jupiter. Then, query INTEGRAL's precise position at each ScW.
+- finally, correct Jupiter's position for INTEGRAL's postion using Skycoord: calculate difference between cartesian vectors of Jupiter and integral
+and then convert back to RA and DEC 
+
+- take larger band, 15 to 60 keV (actually from 25 keV after like 2016 because of wear of the detector)
+    - outgassing, semi-conductor wear (electrons get scattered on impurities and so more impurities due to irradiation means more scattering)
+    - telescopes do annealing but dangerous
+    - integral sensitivity diminsihed by a factor of 2 over the mission
