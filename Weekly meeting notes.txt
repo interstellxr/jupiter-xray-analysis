@@ -155,3 +155,25 @@ and then convert back to RA and DEC
     - outgassing, semi-conductor wear (electrons get scattered on impurities and so more impurities due to irradiation means more scattering)
     - telescopes do annealing but dangerous
     - integral sensitivity diminsihed by a factor of 2 over the mission
+
+To-do (priority):
+[] Fix ScW selection code (for now no precise RA and DEC)
+[] Crab:
+    [] Disable emails
+    [] Add upper bound for PPPP (for each revolution, look at max PPPP and take < max-10)
+    [] Change E range to 15 - 60 keV
+    [] When extracting variance, also extract variance in annular region around the source
+[] Replicate the above for Jupiter
+
+[] Obtain long term LC using isgri_image
+    [] Crab
+    [] Jupiter
+[] Obtain same LC using isgri_lc
+    [] Crab
+    [] Jupiter
+
+Extras / following weeks:
+[] Take into a count the parallax error by using INTEGRAL's epehemeride and Jupiter's position at each ScW
+[] PSF fitting instead of extracting count rate from a single pixel (only fit amplitude, smeared gaussian for Jupiter)
+    [] Crab
+    [] Jupiter
