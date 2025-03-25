@@ -1,0 +1,215 @@
+WEEK 1 ------------------------------------------------------------------------------------------------
+What I did:
+- Read some literature on X-ray observations of Venus and Jupiter
+- Read articles and noted information on INTEGRAL and its instruments
+- Started the ODA/API tutorial
+
+Meeting notes:
+- INTEGRAL is in a highly elliptical orbit, spends most its time far from Earth => max observation time of ~ 2.5 days
+- compare jupiter time scale variations (literature) to science windows (need to either split or combine the science windows)
+- we will mostly be interested in images, not light curves (basically many images)
+- main idea: find jupiter and science window(s) for certain timescale and stack images keeping Jupiter fixed.
+
+To-do : 
+[X] finish tutorial, especially part on science windows query 
+[X] look at how to use tokens 
+[X] check literature for expected timescale variation of Jupiter X-ray emission
+[X] get Jupiter coordinates over time, find science windows that contain Jupiter using coordinates (search radius of roughly 50 degrees).
+ 
+WEEK 2 ------------------------------------------------------------------------------------------------
+What I did:
+- Finished the ODA/API tutorial
+- Read more literature and did summaries, found many information on Jupiter's X-rays and time variability
+- Used JPL's Horizons module with astroquery to get Jupiter's ephemerides
+- Since I query Jupiter's position from Earth and not INTEGRAL, I looked at the maximum angular error
+due to the seperation between INTEGRAL and Earth
+- Had some problems with astroquery (specifying time interval does not work). Initially started to use HEASARC online query.
+- Obtained initial ISGRI data where Jupiter is present within a certain search radius (found ScW online)
+- Finally: I decided to retrieve ScWs corresponding to Jupiter's position on a monthly basis, then filter out the ScWs by 
+matching the month of the observation to the monthly position of Jupiter
+
+To-do:
+[X] Now that I can get ScWs containing Jupiter, I need to analyze them. I have the metadata I need also. I can look at durations, 
+and I can also get light curves. But light curves only for the object being observed? To check! 
+
+WEEK 3 ------------------------------------------------------------------------------------------------
+What I did:
+- Finished code for getting ScWs containing Jupiter over given time period. Ran the code for 2003-2024, took 20 minutes 
+and now I have all ScWs with Jupiter in the FOV (using 8 degree search radius).
+- Managed to read and image some ScWs from the saved file. Understood the metadata (image, variance, significance, exposure).
+- Many (errors?) when querying certain ScWs, for example: "... mosaic_ii_skyimage : analysis exception : inapplicable"
+or "... mosaic_ii_skyimage : task dependencies delegated : inapplicable" (not really errors, still works). Many are empty also, could be due to the energy band?
+
+My ideas for what to do next: 
+- Study long term variability (solar cycle of ~ 11 years) => stack images month by month maybe?
+- Stacking: to stack n images, I need to query the n images and choose a reference image for Jupiter (known coords). 
+Need to convert Jupiter's coords to pixel coordinates and apply a transformation on all images except the reference. 
+Then stack (average).
+- For short-term variability, better to work with light curves for exposures longer than the timescale (~ 45 min).
+But for light curves, how do these work? Because they're for the observed object right? So not sure about small timescales.
+- Use Optical Monitoring Camera to confirm Jupiter's position? Maybe not possible due to small FOV?
+- For now looking at IBIS data (high energies > 15 keV). Jupiter's emission is low energy (~< 3 keV). Look at JEM-X data?
+- I read today INTEGRAL got deactivated 28/02/2025 :-(
+
+Meeting notes:
+- Check variance accuracy through intensity map (std of box around source)
+- Extract the countrate + uncertainty at point of source (as function of time)
+- Also try to get countrate straight from query by passing source to catalog/query (see examples), will also give image
+- Compare the above two
+- This countrate is just counts per detector => need to convert to flux (photons/area/time). Then this can be compared to other data.
+For the conversion: take observation of source with known flux (crab), make image, extract countrate, learn what is actual flux (in that energy range).
+See paper by jordain et al about SPI (1e-8 erg/cm2/s, 20-80 keV range). Take the model, integrate over energy range.
+- Do same things for JEM-X
+- Significant peak: above ~ 5 sigma (make sure not just statistical noise)
+
+To-do:
+[X] Convert countrate to flux using crab nebula (CrabAnalysis.ipynb)
+[X] Obtain variance manually through intensity (ScWAnalysis.ipynb)
+[X] Compare the calculated and extracted variances (ScWAnalysis.ipynb)
+[X] Obtain countrate by passing source to catalog (JupiterLC.ipynb)
+[] Extract countrate and uncertainty at the source over multiple ScWs (ScWscombined.ipynb)
+[] Once you figure out all that, do the same for JEM-X
+
+WEEK 3 ------------------------------------------------------------------------------------------------
+This week's notes:
+- Had some problems as we discussed via email
+- Fixed: crab ScW selection (ends with 0), hardcode catalog for Jupiter
+- Not fixed: obtaining images for multiple ScWs using asynchronous querying (returning blank images),
+WCS problem (too low countrate for the crab, but conversion code is correct)
+- Obtained light curves: next steps: get other light curves for other ScWs and see if the behavior is similar,
+for a given scw, get lightcurves on random points for comparison (I know this is something done for exoplanet transits)
+
+Meeting notes:
+- long term LCs from isgri_lc and from extracting directly from images
+- when bright sources in fov, add jupiter to outputted catalog 
+- for better collaborating use github issues / add as developer
+- do same for crab nebula to compare (test your method)
+- get Jupiter's seperation from pointing direction (all ScWs) over time
+- instrument response changes over time (over integral's telescope). Use conversion factor
+(using crab as standard calibrator which is mostly constant). Compute every year or a bit less 
+and use it to offset instrument response. For short term, bkgd is subtracted.
+- for crab radial offset: should show observations are twice a year 
+(no observations when close or opposite sun)
+- only use OSA11.2 (remove condition)
+
+To-do:
+[X] Obtained Crab ScWs and plotted monthly distribution
+[] Get longterm LCs using both isgri_lc (passing to catalog) and images 
+    [] Crab
+    [] Jupiter
+[] For the crab, get the countrate twice each year for flux conversion
+[] Plot Jupiter's angular offset (distance between Jupiter and pointing direction) over time
+
+WEEK 4+5 ------------------------------------------------------------------------------------------------
+My notes:
+- Crab analysis
+    -> Need to write a code to asynchronously query light curves (time bins = ScW durations) and images for
+    one ScW per month every year. ScWs on the Crab are present for ~ 6 months per year over 22 years so
+    this gives ~ 120 ScWs to query.
+    -> Once finished, this gives the long term light curve of the crab for both methods
+    -> Compare the two methods and make sure they are consistent with each other
+    -> Study the variability and use the values for yearl or bi-yearly flux conversion (averaging)
+    -> Also get a few short term light curves
+- Jupiter analysis
+    -> Long term light curves using same method as the Crab
+    -> Plot angular offset over time
+    -> More short term lightcurves
+
+Problems encountered:
+- DispatcherException => due to problems server-side? Resolved within a day, but appeared again briefly.
+- AnalysisException => main standing problem
+    -> one problem at least is when taking the ~ 5 first ScWs and ~ 10 last ScWs of a revolution. 
+    This is when the telescope crosses radiation belts.
+    -> another is that the good_isgri condition doesnt work in astroquery. Need to do it after like for the times.
+
+- I have updated my ScW selection to choose good_isgri as being > 1000. This leads to not as many ScWs (~ 800 for Jupiter).
+- I also added code for taking PPPP > 0005 (not the first 5). Not sure how to do for not the last 10 as max PPPP varies.
+- Need to replicate what I have done for the Crab on Jupiter + run light curve method & compare
+- Need to fix ScW selection (added ra and dec values, same ones for multiple ScWs)
+- I'll disable the emails
+
+Meeting notes:
+- can fit psf using gaussian but only amplitude
+- also for jupiter but with smeared gaussian (sum of many gaussians)
+- for variance from images, also take variance around the pixel (annular or other) and plot
+
+- for PPPP upper bound, look at max PPPP for each revolution so do per revolution
+- first try psf fitting and compare to pixel fitting with crab before moving to jupiter
+- stacking: map to new grid
+    - average? best to do weighted average (by error), rate divided by variance etc (see variance weighted mean)
+    - not possible to get an actual mean flux 
+    - monthly first could be good
+
+- parallax error is actually significant when considering PSF!! sub-pixel resolution!
+    - to take into account: get INTEGRAL's position: https://www.astro.unige.ch/mmoda/dispatch-data/gw/scsystem/api/v1.0/sc/2024-03-15T20:10:44/0/0
+    - astropy to convert Jupiter coordinates on Earth to the coordinates from the satellite
+
+Process for getting precise Jupiter position:
+- first, dont change how you are getting the ScWs. You get monthly positions with 8deg search radius.
+- then, from the obtained ScWs, get the precise dates, and from them you get Jupiter's positon for each ScW 
+- you have precise positions of Jupiter. Then, query INTEGRAL's precise position at each ScW.
+- finally, correct Jupiter's position for INTEGRAL's postion using Skycoord: calculate difference between cartesian vectors of Jupiter and integral
+and then convert back to RA and DEC 
+
+- take larger band, 15 to 60 keV (actually from 25 keV after like 2016 because of wear of the detector)
+    - outgassing, semi-conductor wear (electrons get scattered on impurities and so more impurities due to irradiation means more scattering)
+    - telescopes do annealing but dangerous
+    - integral sensitivity diminsihed by a factor of 2 over the mission
+
+To-do (priority):
+[X] Fix ScW selection code (for now no precise RA and DEC)
+[X] Crab:
+    [X] Disable emails
+    [X] Add upper bound for PPPP (for each revolution, look at max PPPP and take < max-10)
+    [X] Change E range to 15 - 60 keV !!! WORSE !!!
+    [X] When extracting variance, also extract variance in annular region around the source
+    [X] When trying queries, append good scws
+[X] Replicate the above for isgri_lc method 
+[X] Replicate for Jupiter
+[] Obtain long term LC using isgri_image
+    [X] Crab
+    [] Jupiter
+[] Get weighted mean flux
+    [X] Crab
+    [] Jupiter
+[] Obtain same LC using isgri_lc
+    [] Crab
+    [] Jupiter
+
+Extras / following weeks:
+[] Take into a count the parallax error by using INTEGRAL's ephemeride and Jupiter's position at each ScW
+[] PSF fitting instead of extracting count rate from a single pixel (only fit amplitude, smeared gaussian for Jupiter)
+    [X] Crab
+    [] Jupiter
+[] Monthly stacking
+[] Code organisation: could define functions for querying and a utils script, would make everything cleaner
+
+WEEK 6 ------------------------------------------------------------------------------------------------
+
+CRAB -----------
+
+Errors: 
+- Query failed for SCW 122100580010.001: {'cdci_data_analysis_version': '1.3.5', 'cdci_data_analysis_version_details': 'unknown', 'config': {'dispatcher-config': {'cfg_dict': {'dispatcher': {'bind_options': {'bind_host': '0.0.0.0', 'bind_port': 8000}, 'dispatcher_callback_url_base': 'https://dispatcher-staging-flux.obsuks1.unige.ch', 'dummy_cache': 'dummy-cache', 'email_options': {'bcc_receivers_email_addresses': ['vladimir.savchenko@gmail.com'], 'cc_receivers_email_addresses': [], 'email_sending_job_submitted': True, 'email_sending_job_submitted_default_interval': 1209600, 'email_sending_timeout': True, 'email_sending_timeout_default_threshold': 1, 'sender_email_address': 'postmaster@in.odahub.io', 'smtp_port': 587, 'smtp_server': 'smtp.eu.mailgun.org'}, 'matrix_options': {'matrix_message_sending_job_submitted': True, 'matrix_message_sending_job_submitted_default_interval': 5, 'matrix_message_sending_timeout': True, 'matrix_message_sending_timeout_default_threshold': 1800, 'matrix_server_url': 'https://matrix-client.matrix.org/', 'sentry_for_matrix_message_sending_check': False}, 'product_gallery_options': {'product_gallery_url': 'https://www.astro.unige.ch/mmoda/gallery'}, 'products_url': 'https://www.astro.unige.ch/mmoda/', 'renku_options': {'renku_base_project_url': 'http://renkulab.io/projects', 'renku_gitlab_repository_url': 'git@renkulab.io:astronomy/mmoda/mmoda-request.git', 'ssh_key_path': '/etc/renku-ssh-key'}}}, 'origin': {'filepath': '/dispatcher/conf/conf_env.yml', 'set_by': 'command line /pyenv/versions/3.10.11/lib/python3.10/site-packages/cdci_data_analysis/flask_app/app.py:cdci_data_analysis.flask_app.app'}}, 'plugins': {'cdci_osa_plugin': {'config_file': '/dispatcher/conf/conf.d/osa_data_server_conf.yml'}, 'cdci_polar_plugin': {'config_file': '/dispatcher/conf/conf.d/polar_data_server_conf.yml'}, 'dispatcher_plugin_antares': {'config_file': '/dispatcher/conf/conf.d/antares_data_server_conf.yml'}, 'dispatcher_plugin_gw': {'config_file': '/dispatcher/conf/conf.d/gw_data_server_conf.yml'}, 'dispatcher_plugin_integral_all_sky': {'config_file': '/pyenv/versions/3.10.11/lib/python3.10/site-packages/dispatcher_plugin_integral_all_sky/config_dir/data_server_conf.yml'}, 'dispatcher_plugin_legacysurvey': {'config_file': '/dispatcher/conf/conf.d/legacysurvey_data_server_conf.yml'}, 'dispatcher_plugin_nb2workflow': {'config_file': '/dispatcher/conf/conf.d/nb_data_server_conf.yml'}}}, 'debug_mode': 'no', 'error_message': 'please run connect() first', 'installed_instruments': ['isgri', 'jemx', 'polar', 'antares', 'gw', 'spi_acs', 'legacysurvey', 'aafrag', 'agn_cacades', 'analyse_short_astro_text', 'auger', 'crbeam', 'ctao', 'desi_legacy_survey', 'erosita', 'fermi_lat', 'gaia', 'gallery', 'hess', 'iact_simulators', 'icecube', 'combine_integral_gallery_products', 'integral_gallery_products', 'isgri_expert', 'jemx_expert', 'karabo_dirty_image_sim', 'lightcurve_analysis', 'lst', 'magic', 'meerkat_galaxy_clusters', 'mwa', 'photoz_euclid', 'rosat', 'sed', 'sgwb', 'spectral_analysis', 'stix_mwa_solar_activity', 'synch_ic_brems', 'tool_plot_candidates_pos_photoz', 'wise'], 'message': 'request not valid', 'oda_api_version': '1.2.38'}
+- Query failed for SCW 109600690010.001: HTTPSConnectionPool(host='www.astro.unige.ch', port=443): Max retries exceeded with url: /mmoda/dispatch-data/api/par-names?instrument=isgri&product_type=isgri_image (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fe87df11e20>: Failed to resolve 'www.astro.unige.ch' ([Errno -3] Temporary failure in name resolution)"))
+
+This is after I introduced good_isgri filtering AND pointings filtering (> first 5 and < last 10)!
+The errors start happening at 2011-10, before it was working fine.
+Since I managed to get data from 2003 to 2016 last time, the only thing I changed that could affect this is the energy range.
+
+I try again with E from 15 to 30 keV like before.
+    -> working fine up to 2009-08, then errors all the way 
+    -> I waited for the run to finish, and in all ended up with [...] ScWs from 2003-02 to [...]
+
+Try with 30 - 60 keV:
+    -> 
+
+Other:
+- Disabling email not working, so I just removed token usage.
+    - After upgrading api version it works
+- Tested PSF fitting on Crab image: works good.
+    - Fitting amplitude, position: looks okay, possibly too low count rate
+    - Fitting amplitude, position and offset: better!
+    - Fitting the variances and rotation angle changes nearly nothing
+    - For smeared gaussian fitting, then it would be best to fit variances and theta (elliptical gaussian)
+
+JUPITER --------
