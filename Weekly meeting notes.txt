@@ -212,4 +212,21 @@ Other:
     - Fitting the variances and rotation angle changes nearly nothing
     - For smeared gaussian fitting, then it would be best to fit variances and theta (elliptical gaussian)
 
-JUPITER --------
+WEEK 7 ------------------------------------------------------------------------------------------------
+To-do: 
+[] Fix WCS problem for Jupiter ScWs
+[] Re-run Crab + Jupiter querying and save all data to fits files (organize into folders)
+    [X] Crab (images + light curves)
+        -> images look exactly like light curves (when taking pixel values!)
+    [X] Jupiter (images)
+    [] Jupiter (light curves)
+    [] Change plotting code to read from saved FITS files
+[X] Redo the ScWs querying with astroquery: save the entire table and filter based on the table
+    -> but not as many ScWs for Jupiter and none for Crab ...
+[X] Annular count rate: take larger region
+    -> took within annular region 20 < r < 40
+[] Re-run queries for higher E range and for JEM-X
+[] Stack images (see planets code on Volodymyr's GitHub) + plot distribution and check for excesses
+[] Quantify data scientifically / statistically
+[] Investigate OMC? Also account for parallax?
+[] Refactor code with function definitions, etc.
