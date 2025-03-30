@@ -214,19 +214,39 @@ Other:
 
 WEEK 7 ------------------------------------------------------------------------------------------------
 To-do: 
-[] Fix WCS problem for Jupiter ScWs
+[X] Fix WCS problem for Jupiter ScWs 
+    -> take nearest Jupiter position to pointing
 [] Re-run Crab + Jupiter querying and save all data to fits files (organize into folders)
     [X] Crab (images + light curves)
         -> images look exactly like light curves (when taking pixel values!)
     [X] Jupiter (images)
     [] Jupiter (light curves)
-    [] Change plotting code to read from saved FITS files
+    [X] Change plotting code to read from saved FITS files
 [X] Redo the ScWs querying with astroquery: save the entire table and filter based on the table
     -> but not as many ScWs for Jupiter and none for Crab ...
 [X] Annular count rate: take larger region
     -> took within annular region 20 < r < 40
-[] Re-run queries for higher E range and for JEM-X
+[] Re-run queries for higher E range
+[] Re-run queries for JEM-X
 [] Stack images (see planets code on Volodymyr's GitHub) + plot distribution and check for excesses
 [] Quantify data scientifically / statistically
 [] Investigate OMC? Also account for parallax?
-[] Refactor code with function definitions, etc.
+[X] Refactor code with function definitions, etc.
+    -> done for the data loading, to do for the querying
+    -> need to clean up old codes (JupiterLongTerm most importantly)
+
+Monday 31/03 action items:
+[] Fix flux conversion code
+[] Query Crab LCs 30 - 60 keV
+[] Query Jupiter LCs 15 - 30 keV
+[] Query Jupiter images 30 - 60 keV
+[] Query Jupiter LCs 30 - 60 keV
+[] Query Crab Images JEM-X
+[] Query Crab LCs JEM-X
+[] Query Jupiter Images JEM-X
+[] Query Jupiter LCs JEM-X
+[] Meanwhile, clean up codes (no longer plotting in query codes, ...)
+[] Plot all of the above
+
+Notes:
+- Revise error propagation for flux conversion (error from countrates, weighted averages and from reference flux)
