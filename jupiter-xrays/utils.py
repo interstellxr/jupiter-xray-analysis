@@ -44,6 +44,7 @@ def weighted_avg(obs_times, count_rates, variances):
 
     count_rates = np.array(count_rates)
     variances = np.array(variances)
+    obs_times = np.array(obs_times)
     
     # Remove NaN or zero variances
     valid_mask = (variances > 0) & ~np.isnan(variances)
@@ -53,7 +54,14 @@ def weighted_avg(obs_times, count_rates, variances):
     
     weights = 1 / np.array(variances)
 
-    obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
+    # Check if obs_times are strings, and convert to datetime if necessary
+    if isinstance(obs_times[0], str):
+        try:
+            obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
+        except ValueError:
+            obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S") for date in obs_times])
+    else:
+        obs_times = np.array(obs_times)
     
     # Total weighted average
     total_weighted_mean = np.average(count_rates, weights=weights)
@@ -80,13 +88,14 @@ def weighted_avg(obs_times, count_rates, variances):
         
         yearly_results[year] = {
             "weighted_mean": yearly_weighted_mean,
-            "weighted_std": yearly_weighted_std
+            "weighted_std": yearly_weighted_std,
+            "year": year
         }
     
     return total_result, yearly_results
 
 # Convert count rate to flux
-def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_stds, instrument="ISGRI", energy_range=(15, 30)):
+def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_stds, crab_years, instrument="ISGRI", energy_range=(15, 30)):
     """
     Convert count rates to fluxes using the Crab data, yearly-based on observation times.
     The Crab yearly weighted means and standard deviations are provided as inputs.
@@ -98,33 +107,38 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
             List of variances.
         obs_times : list
             List of observation times (either datetime objects or strings).
-        crab_yearly_means : dict
-            Dictionary of yearly weighted means of the Crab.
-        crab_yearly_stds : dict
-            Dictionary of yearly weighted standard deviations of the Crab.
+        crab_yearly_means : list
+            List of yearly weighted means of the Crab.
+        crab_yearly_stds : list
+            List of yearly weighted standard deviations of the Crab.
+        crab_years : list
+            List of years corresponding to the yearly means and standard deviations.
         instrument : str
             Instrument name (ISGRI or JEM-X).
         energy_range : tuple
             Energy range for conversion (default is (15, 30)).
 
     Returns:
-        photon_fluxes : list
-            List of fluxes in photons/cm2/s.
-        photon_fluxes_std : list
-            List of fluxes standard deviations in photons/cm2/s.
-        erg_fluxes : list
-            List of fluxes in erg/cm2/s.
-        erg_fluxes_std : list
-            List of fluxes standard deviations in erg/cm2/s.
+        photon_fluxes : np.ndarray
+            Array of fluxes in photons/cm2/s.
+        photon_fluxes_std : np.ndarray
+            Array of fluxes standard deviations in photons/cm2/s.
+        erg_fluxes : np.ndarray
+            Array of fluxes in erg/cm2/s.
+        erg_fluxes_std : np.ndarray
+            Array of fluxes standard deviations in erg/cm2/s.
+        new_obs_times : np.ndarray
+            Array of observation times after filtering.
     """
     
     # Check if obs_times are strings, and convert to datetime if necessary
     if isinstance(obs_times[0], str):
-        obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S") for date in obs_times])
+        try:
+            obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
+        except ValueError:
+            obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S") for date in obs_times])
     else:
         obs_times = np.array(obs_times)
-
-    E = np.linspace(energy_range[0], energy_range[1], 1000) 
 
     if instrument == "ISGRI":
         gamma = 2.12  # photon index of ISGRI 
@@ -135,37 +149,50 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
         E0 = 1  # 1 keV reference energy
         K = 11.4  # flux (photons/cm2/s) @ 1 keV for JEM-X 1 (10.3 for JEM-X 2)
 
-    power_law = K * (E / E0) ** (-gamma)  # flux
+    E = np.linspace(energy_range[0], energy_range[1], 1000) 
 
+    power_law = K * (E / E0) ** (-gamma)  # flux
     ph_flux_num = np.trapz(power_law, E)  # numeric
     ph_flux_num_erg = np.trapz(power_law * E * 1.60218e-9, E)  # numeric, energy units
     
-    photon_fluxes = []
-    photon_fluxes_std = []
-    erg_fluxes = []
-    erg_fluxes_std = []
+    photon_fluxes = np.array([])
+    photon_fluxes_std = np.array([])
+    erg_fluxes = np.array([])
+    erg_fluxes_std = np.array([])
+    new_obs_times = np.array([])
+
+    crab_years = np.array(crab_years, dtype=int)
 
     # For each observation, apply the corresponding yearly conversion factor
     for date, count_rate in zip(obs_times, countrates):
         year = date.year
-        
-        yearly_weighted_mean = crab_yearly_means.get(year)
-        yearly_weighted_std = crab_yearly_stds.get(year)
-
-        if yearly_weighted_mean is None or yearly_weighted_std is None:
+        # there are 23 years of crab data starting from 2003 and ending in 2025
+        # so the index 0 corresponds to 2003, and the index 22 corresponds to 2025, etc.
+        # check date, and for each one assign an index, then get the corresponding yearly mean and std
+        # if the year is not in the crab_years, skip it
+        if crab_yearly_means is None or crab_yearly_stds is None:
             continue
-        
-        yearly_conversion_factor = ph_flux_num / yearly_weighted_mean
-        yearly_conversion_factor_erg = ph_flux_num_erg / yearly_weighted_mean
-        yearly_conversion_factor_std = ph_flux_num / yearly_weighted_std
-        yearly_conversion_factor_erg_std = ph_flux_num_erg / yearly_weighted_std
+        if int(year) not in crab_years:
+            continue
 
-        photon_fluxes.append(yearly_conversion_factor * count_rate)
-        photon_fluxes_std.append(yearly_conversion_factor_std * count_rate)
-        erg_fluxes.append(yearly_conversion_factor_erg * count_rate)
-        erg_fluxes_std.append(yearly_conversion_factor_erg_std * count_rate)
+        new_obs_times = np.append(new_obs_times, date)
+
+        index_array = np.argwhere(crab_years == year).flatten()
+        index = index_array[0]
+        mean = crab_yearly_means[index]
+        std = crab_yearly_stds[index]
+
+        yearly_conversion_factor = ph_flux_num / mean
+        yearly_conversion_factor_erg = ph_flux_num_erg / mean
+        yearly_conversion_factor_std = ph_flux_num / std
+        yearly_conversion_factor_erg_std = ph_flux_num_erg / std
+
+        photon_fluxes = np.append(photon_fluxes, yearly_conversion_factor * count_rate)
+        photon_fluxes_std = np.append(photon_fluxes_std, yearly_conversion_factor_std * count_rate)
+        erg_fluxes = np.append(erg_fluxes, yearly_conversion_factor_erg * count_rate)
+        erg_fluxes_std = np.append(erg_fluxes_std, yearly_conversion_factor_erg_std * count_rate)
     
-    return np.array(photon_fluxes), np.array(photon_fluxes_std), np.array(erg_fluxes), np.array(erg_fluxes_std)
+    return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
 
 ## This script is used to load the Crab data from the FITS files and extract the relevant information.
@@ -204,6 +231,8 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
             Errors from the Gaussian PSF fit.
         date1 : np.ndarray
             Dates of observations.
+        offset1 : np.ndarray
+            Offsets of Crab from the pointing coordinates.
     """
     
     cr1 = np.array([])
@@ -217,63 +246,79 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
     err1_cpsf = np.array([])
     err1_psf = np.array([])
     date1 = np.array([])
+    offset1 = np.array([])
 
     for img in glob.glob(f"{path}/*"):
-        # Load the FITS file
-        hdu = fits.open(img)
 
-        # Extract the data from the FITS file
-        intensities = hdu[2].data
-        variances = hdu[3].data
-        significances = hdu[4].data
-        exposures = hdu[5].data
-        date1 = np.append(date1, hdu[2].header["DATE-OBS"])
+        try:
+            # Load the FITS file
+            hdu = fits.open(img)
+            header = hdu[2].header
 
-        # WCS data
-        wcs = WCS(hdu[2].header)
-        x, y = wcs.all_world2pix(crab_ra, crab_dec, 0)
-        x_int, y_int = int(round(x.item())), int(round(y.item()))
+            # Extract the data from the FITS file
+            intensities = hdu[2].data
+            intensities = np.nan_to_num(intensities, nan=0.0)
+            variances = hdu[3].data
+            variances = np.nan_to_num(variances, nan=0.0)
+            significances = hdu[4].data
+            significances = np.nan_to_num(significances, nan=0.0)
+            exposures = hdu[5].data
+            exposures = np.nan_to_num(exposures, nan=0.0)
+            date1 = np.append(date1, header["DATE-OBS"])
 
-        # Single pixel data
-        cr = intensities[y_int, x_int]
-        cr1 = np.append(cr1, cr)
-        vr = variances[y_int, x_int]
-        vr1 = np.append(vr1, vr)
-        sg = significances[y_int, x_int]
-        sg1 = np.append(sg1, sg)
-        xp = exposures[y_int, x_int]
-        xp1 = np.append(xp1, xp)
+            # WCS data
+            wcs = WCS(header)
+            x, y = wcs.all_world2pix(crab_ra, crab_dec, 0)
+            x_int, y_int = int(round(x.item())), int(round(y.item()))
 
-        # Annular region
-        acr = np.array([])
-        avr = np.array([])
+            pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
+            offset1 = np.append(offset1, pointing.separation(crab_coordinates).deg)
 
-        for x in range(x_int - 40, x_int + 40):
-            for y in range(y_int - 40, y_int + 40):
-                if (x - x_int)**2 + (y - y_int)**2 < 20**2:
-                    continue
-                acr = np.append(acr, intensities[y, x])
-                avr = np.append(avr, variances[y, x])
+            # Single pixel data
+            if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
+                cr = intensities[y_int, x_int]
+                cr1 = np.append(cr1, cr)
+                vr = variances[y_int, x_int]
+                vr1 = np.append(vr1, vr)
+                sg = significances[y_int, x_int]
+                sg1 = np.append(sg1, sg)
+                xp = exposures[y_int, x_int]
+                xp1 = np.append(xp1, xp)
+            else:
+                print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
 
-        acr1 = np.append(acr1, np.mean(acr))
-        avr1 = np.append(avr1, np.mean(avr))
+            # Annular region
+            acr = np.array([])
+            avr = np.array([])
 
-        # Fit a Gaussian PSF
-        X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
-        x_grid, y_grid = np.meshgrid(X, Y)
+            for x in range(max(0, x_int - 40), min(intensities.shape[1], x_int + 40)):
+                for y in range(max(0, y_int - 40), min(intensities.shape[0], y_int + 40)):
+                    if (x - x_int)**2 + (y - y_int)**2 < 20**2:
+                        continue
+                    acr = np.append(acr, intensities[y, x])
+                    avr = np.append(avr, variances[y, x])
 
-        def Gaussian2D_fixed(xy, amplitude, xo, yo):
-            return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+            acr1 = np.append(acr1, np.mean(acr))
+            avr1 = np.append(avr1, np.mean(avr))
 
-        popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
-        popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
-        
-        cr1_cpsf = np.append(cr1_cpsf, popt[0])
-        cr1_psf = np.append(cr1_psf, popt2[0])
-        err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
-        err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+            # Fit a Gaussian PSF
+            X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
+            x_grid, y_grid = np.meshgrid(X, Y)
 
-    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1
+            def Gaussian2D_fixed(xy, amplitude, xo, yo):
+                return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+
+            popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
+            popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+            
+            cr1_cpsf = np.append(cr1_cpsf, popt[0])
+            cr1_psf = np.append(cr1_psf, popt2[0])
+            err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
+            err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+        except Exception as e:
+            print(f"Error processing file {img}: {e}")
+
+    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
 # Light curves
 def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
@@ -347,6 +392,8 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
             Errors from the Gaussian PSF fit.
         date1 : np.ndarray
             Dates of observations.
+        offset1 : np.ndarray
+            Offsets of Jupiter from the pointing coordinates.
     """
     
     cr1 = np.array([])
@@ -360,6 +407,7 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
     err1_cpsf = np.array([])
     err1_psf = np.array([])
     date1 = np.array([])
+    offset1 = np.array([])
 
     # Jupiter coordinates
     jcoords = np.loadtxt("../data/Jupiter-ScWs.txt", delimiter=",", skiprows=1, usecols=(4, 5))
@@ -390,6 +438,9 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
         wcs = WCS(header)
         x, y = wcs.all_world2pix(current_ra, current_dec, 0)
         x_int, y_int = int(round(x.item())), int(round(y.item()))
+
+        pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
+        offset1 = np.append(offset1, pointing.separation(jupiter_coords[index]).deg)
 
         # Single pixel data
         cr = intensities[y_int, x_int]
@@ -430,7 +481,7 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
         err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
         err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
 
-    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1
+    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
 # Light curves
 def loadJupiterLC(path):
