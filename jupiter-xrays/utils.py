@@ -14,10 +14,11 @@ from astroquery.simbad import Simbad
 from astropy import coordinates as coord
 import astropy.units as u
 from astroquery.jplhorizons import Horizons
+import requests
+from astropy.io import ascii
 
 ## Define global functions
 
-# This function is used to fit a 2D Gaussian to the data
 def Gaussian2D(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     x, y = xy
     xo = float(xo)
@@ -29,7 +30,7 @@ def Gaussian2D(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     
     return g.ravel()
 
-# This function is used to calculate the weighted average of given count rates, both yearly and total
+
 def weighted_avg(obs_times, count_rates, variances):
     """
     Calculate the weighted average of count rates and their standard deviation.
@@ -52,7 +53,6 @@ def weighted_avg(obs_times, count_rates, variances):
     variances = np.array(variances)
     obs_times = np.array(obs_times)
     
-    # Remove NaN or zero variances
     valid_mask = (variances > 0) & ~np.isnan(variances)
     obs_times = obs_times[valid_mask]
     count_rates = count_rates[valid_mask]
@@ -60,7 +60,6 @@ def weighted_avg(obs_times, count_rates, variances):
     
     weights = 1 / np.array(variances)
 
-    # Check if obs_times are strings, and convert to datetime if necessary
     if isinstance(obs_times[0], str):
         try:
             obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
@@ -69,7 +68,6 @@ def weighted_avg(obs_times, count_rates, variances):
     else:
         obs_times = np.array(obs_times)
     
-    # Total weighted average
     total_weighted_mean = np.average(count_rates, weights=weights)
     total_weighted_std = np.sqrt(1 / np.sum(weights))
     
@@ -78,7 +76,6 @@ def weighted_avg(obs_times, count_rates, variances):
         "weighted_std": total_weighted_std
     }
     
-    # Yearly weighted averages
     yearly_data = defaultdict(list)
     for date, count_rate, weight in zip(obs_times, count_rates, weights):
         year = date.year
@@ -100,7 +97,7 @@ def weighted_avg(obs_times, count_rates, variances):
     
     return total_result, yearly_results
 
-# Convert count rate to flux
+
 def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_stds, crab_years, instrument="ISGRI", energy_range=(15, 30)):
     """
     Convert count rates to fluxes using the Crab data, yearly-based on observation times.
@@ -137,7 +134,6 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
             Array of observation times after filtering.
     """
     
-    # Check if obs_times are strings, and convert to datetime if necessary
     if isinstance(obs_times[0], str):
         try:
             obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
@@ -151,9 +147,9 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
         E0 = 100  # 100 keV reference energy
         K = 6.2e-4  # flux (photons/cm2/s) @ 100 keV 
     elif instrument == "JEM-X":
-        gamma = 2.15  # photon index of JEM-X 1 (2.08 for JEM-X 2)
+        gamma = 2.08  # photon index of JEM-X 2 (2.15 for JEM-X 1)
         E0 = 1  # 1 keV reference energy
-        K = 11.4  # flux (photons/cm2/s) @ 1 keV for JEM-X 1 (10.3 for JEM-X 2)
+        K = 10.3  # flux (photons/cm2/s) @ 1 keV for JEM-X 2 (11.4 for JEM-X 1)
 
     E = np.linspace(energy_range[0], energy_range[1], 1000) 
 
@@ -169,7 +165,7 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
 
     crab_years = np.array(crab_years, dtype=int)
 
-    # For each observation, apply the corresponding yearly conversion factor
+    
     for date, count_rate in zip(obs_times, countrates):
         year = date.year
         # there are 23 years of crab data starting from 2003 and ending in 2025
@@ -200,7 +196,8 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
     
     return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
-def get_integral_position(obs_date):
+
+def get_integral_position(obs_date): # used in JupiterPos function
     url = f"https://www.astro.unige.ch/mmoda/dispatch-data/gw/scsystem/api/v1.0/sc/{obs_date}/0/0"
     response = requests.get(url)
     if response.status_code == 200:
@@ -213,9 +210,9 @@ def get_integral_position(obs_date):
         raise ValueError("Error fetching INTEGRAL data")
 
 
-def JupiterPos(fits_path="../data/JupiterIMG_FITS_15_30/", parallax=False):
+def JupiterPos(fits_path="../data/Jupiter/15-30keV/Images", parallax=True):
     """
-    Get the position of Jupiter for given ScWs, 
+    Get the position of Jupiter for given ScWs from FITS files, 
     with the option of accounting for parallax (i.e. position of INTEGRAL).
 
     Parameters:
@@ -239,8 +236,8 @@ def JupiterPos(fits_path="../data/JupiterIMG_FITS_15_30/", parallax=False):
             List of Jupiter Dec coordinates.
     """
     
-    fits_files = np.sort(os.listdir(fits_path)) # list of the jupiter SCW FITS files
-    scws = [f[:12] for f in fits_files] # list of the SCW names
+    fits_files = np.sort(os.listdir(fits_path)) 
+    scws = [f[:12] for f in fits_files]
 
     scw_dates = np.array([])
     scw_ra = np.array([])
@@ -260,11 +257,12 @@ def JupiterPos(fits_path="../data/JupiterIMG_FITS_15_30/", parallax=False):
             scw_ra = np.append(scw_ra, ra)
             scw_dec = np.append(scw_dec, dec)
 
-            epochs = Time(obs_date).jd
-            jupiter = Horizons(id='599', location='@0', epochs=epochs)
+            epochs = Time(obs_date).jd # JD
+            jupiter = Horizons(id='599', location='@0', epochs=epochs) # expects JD
             eph = jupiter.ephemerides()
-            jra = eph['RA']
-            jdec = eph['DEC']
+            jra = eph['RA'] # deg
+            jdec = eph['DEC'] # deg
+            jdist = eph['delta'] * u.au.to(u.km) * u.km # km
 
             if parallax:
 
@@ -290,11 +288,10 @@ def JupiterPos(fits_path="../data/JupiterIMG_FITS_15_30/", parallax=False):
 
 ## This script is used to load the Crab data from the FITS files and extract the relevant information.
 
-# Crab coordinates
 crab_coordinates = SkyCoord.from_name("Crab")
 crab_ra, crab_dec = crab_coordinates.ra.deg, crab_coordinates.dec.deg
 
-# Images
+
 def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
     """
     Load Crab images from FITS files and extract relevant data.
@@ -415,7 +412,7 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
 
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
-# Light curves
+
 def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
     """
     Load Crab light curves from FITS files and extract relevant data.
@@ -436,10 +433,8 @@ def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
     date = np.array([])
 
     for img in glob.glob(f"{path}/*"):
-        # Load the FITS file
         hdu = fits.open(img)
 
-        # Extract the data from the FITS file
         data = hdu[1].data
 
         start = hdu[1].header["TSTART"]
@@ -457,13 +452,14 @@ def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
 
 ## Below are the same type of functions, but for Jupiter's data
 
-# Images
-def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupiter-ScWs.txt"):
+def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jupiter_table.dat"):
     """
     Load Jupiter images from FITS files and extract relevant data.
     Parameters:
         path : str
             Path to the directory containing the FITS files.
+        scw_path : str
+            Path to the file containing the Jupiter table.
     Returns:
         cr1 : np.ndarray
             Count rates.
@@ -504,41 +500,40 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
     date1 = np.array([])
     offset1 = np.array([])
 
-    # Jupiter coordinates
-    jcoords = np.loadtxt(scw_path, delimiter=",", skiprows=1, usecols=(4, 5))
-    jupiter_ra = jcoords[:, 0]
-    jupiter_dec = jcoords[:, 1]
+    jupiter_table = ascii.read(scw_path)
+
+    jupiter_ra = jupiter_table['jupiter_ra'] # ICRS
+    jupiter_dec = jupiter_table['jupiter_dec']
+
+    jdates = jupiter_table['start_date'] # MJD
+    jdates = [Time(jd, format="mjd").datetime for jd in jdates]
 
     for img in glob.glob(f"{path}/*"):
 
         try: 
 
-            # Load the FITS file
             hdu = fits.open(img)
             header = hdu[2].header
 
-            # Extract the data from the FITS file
             intensities = hdu[2].data
             variances = hdu[3].data
             significances = hdu[4].data
             exposures = hdu[5].data
-            date1 = np.append(date1, header["DATE-OBS"])
 
-            # Get the index of the closest Jupiter coordinates (which should be the one within the same month)
-            jupiter_coords = SkyCoord(ra=jupiter_ra, dec=jupiter_dec, unit="deg")
-            pointing_coords = SkyCoord(ra=header["CRVAL1"], dec=header["CRVAL2"], unit="deg")
-            index = jupiter_coords.separation(pointing_coords).argmin()
-            
-            current_ra = jupiter_ra[index]
-            current_dec = jupiter_dec[index]
+            date_obs = Time(header["DATE-OBS"]).datetime
 
-            # WCS data
+            # Find closest Jupiter position in time
+            closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
+            current_ra = jupiter_ra[closest_idx]
+            current_dec = jupiter_dec[closest_idx]
+
+            jupiter_coords = SkyCoord(ra=current_ra, dec=current_dec, unit=("deg", "deg"), frame='fk5')
+
             wcs = WCS(header)
             x, y = wcs.all_world2pix(current_ra, current_dec, 0)
             x_int, y_int = int(round(x.item())), int(round(y.item()))
 
             pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
-            offset1 = np.append(offset1, pointing.separation(jupiter_coords[index]).deg)
 
             if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
                 cr = intensities[y_int, x_int]
@@ -553,7 +548,6 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
                 print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
                 continue
 
-            # Annular region
             acr = np.array([])
             avr = np.array([])
 
@@ -564,10 +558,7 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
                     acr = np.append(acr, intensities[y, x])
                     avr = np.append(avr, variances[y, x])
 
-            acr1 = np.append(acr1, np.mean(acr))
-            avr1 = np.append(avr1, np.mean(avr))
 
-            # Fit a Gaussian PSF
             X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
             x_grid, y_grid = np.meshgrid(X, Y)
 
@@ -576,19 +567,27 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
 
             popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
             popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+
+            # Append the results
+            date1 = np.append(date1, header["DATE-OBS"])
+            offset1 = np.append(offset1, pointing.separation(jupiter_coords).deg)
+
+            acr1 = np.append(acr1, np.mean(acr))
+            avr1 = np.append(avr1, np.mean(avr))
             
             cr1_cpsf = np.append(cr1_cpsf, popt[0])
             cr1_psf = np.append(cr1_psf, popt2[0])
             err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+
         except Exception as e:
             print(f"Error processing file {img}: {e}")
             continue
 
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
-# Light curves
-def loadJupiterLC(path):
+
+def loadJupiterLC(path="../data/Jupiter/15-30keV/Lightcurves"):
     """
     Load Jupiter light curves from FITS files and extract relevant data.
     Parameters:
@@ -608,10 +607,9 @@ def loadJupiterLC(path):
     date = np.array([])
 
     for img in glob.glob(f"{path}/*"):
-        # Load the FITS file
+
         hdu = fits.open(img)
 
-        # Extract the data from the FITS file
         data = hdu[1].data
 
         start = hdu[1].header["TSTART"]

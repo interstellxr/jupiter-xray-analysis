@@ -284,5 +284,10 @@ To-do:
 So: 
 [X] Get Jupiter's position for each ScW
 [X] Whilst you're at it, account for parallax using INTEGRAL's position
-[] Modify rest of the code to use these precise positions (only need to run once, then get from file)
-[] Big difference between monthly and exact position (> 8 degrees).. to investigate
+[X] Big difference between monthly and exact position (> 8 degrees).. to investigate
+    -> need to requery based on table, my old code was incorrect for some reason...
+
+So:
+[X] Modify all codes to adapt to new ScWs and exact positions of Jupiter
+    -> precise positions done directly when saving ScW table, just need to change how I load the data
+[] Re-query the rest of the energy ranges
