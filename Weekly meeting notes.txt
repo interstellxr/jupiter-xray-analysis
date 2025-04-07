@@ -241,7 +241,7 @@ Priority:
 [X] Query Jupiter images 30 - 60 keV
 [X] Meanwhile, clean up codes (no longer plotting in query codes, ...)
 [X] Query Crab Images JEM-X
-[] Query Jupiter Images JEM-X
+[X] Query Jupiter Images JEM-X
 
 [] Query Crab LCs 30 - 60 keV
 [] Query Jupiter LCs 15 - 30 keV
@@ -258,15 +258,31 @@ WEEK 8 -------------------------------------------------------------------------
 Bugs to fix:
 - JEM-X observation dates not in header?
 - JEM-X data not in same unit, need new flux conversion function
-- handles nans
-
+- handle nans
 Main priority: 
-- query JEM-X Jupiter
+- query JEM-X Jupiter: already queried like 257 and saved to folder, so add a few lines to check if filtered_scws already in the folder, if not then query it!
+- also, do a final check to make sure you have same scws across all energy ranges. Those missing, query for the corresponding ranges.
 - stack images using the example of the planets code on GitHub
     -> check distributions and look for excesses
     -> try to quantify statistically the results
-
 Secondary: finish all the querying (LCs)
-
 Other:
 - continue utils functions (querying, plotting)
+
+To-do:
+[X] Finish querying Jupiter JEM-X and 30-60 range
+[X] Check all same images for each energy range, query the missing ScWs
+[X] Stack using planets code example on GitHub
+[] Fix errors: JEM-X observation dates not in header, JEM-X data not in same unit, NaNs, FOV lower for JEM-X so object may not be in the FOV
+[] Analyze Jupiter JEM-X images, should get some detections.. 
+
+!!! Jupiter's position not precise:
+    - I have Jupiter's monthly position, as it changes by roughly 8 degrees every 2months
+    - But so for each month it changes by a few degrees during the month!!
+    - Need to get the precise position for each ScW!
+
+So: 
+[X] Get Jupiter's position for each ScW
+[X] Whilst you're at it, account for parallax using INTEGRAL's position
+[] Modify rest of the code to use these precise positions (only need to run once, then get from file)
+[] Big difference between monthly and exact position (> 8 degrees).. to investigate

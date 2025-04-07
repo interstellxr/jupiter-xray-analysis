@@ -8,6 +8,12 @@ import os
 from astropy.time import Time
 from datetime import datetime
 from collections import defaultdict
+import pandas as pd
+import astroquery.heasarc
+from astroquery.simbad import Simbad
+from astropy import coordinates as coord
+import astropy.units as u
+from astroquery.jplhorizons import Horizons
 
 ## Define global functions
 
@@ -194,6 +200,93 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
     
     return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
+def get_integral_position(obs_date):
+    url = f"https://www.astro.unige.ch/mmoda/dispatch-data/gw/scsystem/api/v1.0/sc/{obs_date}/0/0"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        integral_ra = data['ephs']['ra'] 
+        integral_dec = data['ephs']['dec']
+        integral_alt = data['ephs']['alt']
+        return integral_ra, integral_dec, integral_alt
+    else:
+        raise ValueError("Error fetching INTEGRAL data")
+
+
+def JupiterPos(fits_path="../data/JupiterIMG_FITS_15_30/", parallax=False):
+    """
+    Get the position of Jupiter for given ScWs, 
+    with the option of accounting for parallax (i.e. position of INTEGRAL).
+
+    Parameters:
+        fits_path : str
+            Path to the directory containing the FITS files.
+        parallax : bool
+            If True, calculate the position of Jupiter considering parallax due to the position of INTEGRAL.
+    
+    Returns:
+        scws : list
+            List of SCW names.
+        scw_dates : list
+            List of observation dates.
+        scw_ra : list
+            List of RA coordinates.
+        scw_dec : list
+            List of Dec coordinates.
+        scw_jra : list
+            List of Jupiter RA coordinates.
+        scw_jdec : list
+            List of Jupiter Dec coordinates.
+    """
+    
+    fits_files = np.sort(os.listdir(fits_path)) # list of the jupiter SCW FITS files
+    scws = [f[:12] for f in fits_files] # list of the SCW names
+
+    scw_dates = np.array([])
+    scw_ra = np.array([])
+    scw_dec = np.array([])
+    scw_jra = np.array([])
+    scw_jdec = np.array([])
+
+    for f in fits_files:
+        with fits.open(os.path.join(fits_path, f)) as hdu:
+            header = hdu[2].header
+            obs_date = header['DATE-OBS']
+            end_date = header['DATE-END']
+            ra = header['CRVAL1']
+            dec = header['CRVAL2']
+
+            scw_dates = np.append(scw_dates, obs_date)
+            scw_ra = np.append(scw_ra, ra)
+            scw_dec = np.append(scw_dec, dec)
+
+            epochs = Time(obs_date).jd
+            jupiter = Horizons(id='599', location='@0', epochs=epochs)
+            eph = jupiter.ephemerides()
+            jra = eph['RA']
+            jdec = eph['DEC']
+
+            if parallax:
+
+                integral_ra, integral_dec, integral_alt = get_integral_position(obs_date)
+
+                integral_position = SkyCoord(ra=integral_ra*u.deg, dec=integral_dec*u.deg, distance=integral_alt*u.km).transform_to('fk5')
+                jupiter_position = SkyCoord(ra=jra, dec=jdec, distance=jdist).transform_to('fk5')
+
+                jupiter_relative_position = jupiter_position.cartesian - integral_position.cartesian
+
+                relative_position = SkyCoord(x=jupiter_relative_position.x, 
+                                    y=jupiter_relative_position.y, 
+                                    z=jupiter_relative_position.z, 
+                                    representation_type='cartesian').transform_to(integral_position.frame)
+
+                jra = relative_position.ra.value
+                jdec = relative_position.dec.value
+
+            scw_jra = np.append(scw_jra, jra)
+            scw_jdec = np.append(scw_jdec, jdec)
+
+    return scws, scw_dates, scw_ra, scw_dec, scw_jra, scw_jdec
 
 ## This script is used to load the Crab data from the FITS files and extract the relevant information.
 
@@ -286,6 +379,7 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
                 xp1 = np.append(xp1, xp)
             else:
                 print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
+                continue
 
             # Annular region
             acr = np.array([])
@@ -317,6 +411,7 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
         except Exception as e:
             print(f"Error processing file {img}: {e}")
+            continue
 
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
@@ -395,7 +490,7 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
         offset1 : np.ndarray
             Offsets of Jupiter from the pointing coordinates.
     """
-    
+
     cr1 = np.array([])
     vr1 = np.array([])
     sg1 = np.array([])
@@ -410,76 +505,85 @@ def loadJupiterIMG(path="../data/JupiterIMG_FITS_15_30", scw_path="../data/Jupit
     offset1 = np.array([])
 
     # Jupiter coordinates
-    jcoords = np.loadtxt("../data/Jupiter-ScWs.txt", delimiter=",", skiprows=1, usecols=(4, 5))
+    jcoords = np.loadtxt(scw_path, delimiter=",", skiprows=1, usecols=(4, 5))
     jupiter_ra = jcoords[:, 0]
     jupiter_dec = jcoords[:, 1]
 
     for img in glob.glob(f"{path}/*"):
-        # Load the FITS file
-        hdu = fits.open(img)
-        header = hdu[2].header
 
-        # Extract the data from the FITS file
-        intensities = hdu[2].data
-        variances = hdu[3].data
-        significances = hdu[4].data
-        exposures = hdu[5].data
-        date1 = np.append(date1, header["DATE-OBS"])
+        try: 
 
-        # Get the index of the closest Jupiter coordinates
-        jupiter_coords = SkyCoord(ra=jupiter_ra, dec=jupiter_dec, unit="deg")
-        pointing_coords = SkyCoord(ra=header["CRVAL1"], dec=header["CRVAL2"], unit="deg")
-        index = jupiter_coords.separation(pointing_coords).argmin()
-        
-        current_ra = jupiter_ra[index]
-        current_dec = jupiter_dec[index]
+            # Load the FITS file
+            hdu = fits.open(img)
+            header = hdu[2].header
 
-        # WCS data
-        wcs = WCS(header)
-        x, y = wcs.all_world2pix(current_ra, current_dec, 0)
-        x_int, y_int = int(round(x.item())), int(round(y.item()))
+            # Extract the data from the FITS file
+            intensities = hdu[2].data
+            variances = hdu[3].data
+            significances = hdu[4].data
+            exposures = hdu[5].data
+            date1 = np.append(date1, header["DATE-OBS"])
 
-        pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
-        offset1 = np.append(offset1, pointing.separation(jupiter_coords[index]).deg)
+            # Get the index of the closest Jupiter coordinates (which should be the one within the same month)
+            jupiter_coords = SkyCoord(ra=jupiter_ra, dec=jupiter_dec, unit="deg")
+            pointing_coords = SkyCoord(ra=header["CRVAL1"], dec=header["CRVAL2"], unit="deg")
+            index = jupiter_coords.separation(pointing_coords).argmin()
+            
+            current_ra = jupiter_ra[index]
+            current_dec = jupiter_dec[index]
 
-        # Single pixel data
-        cr = intensities[y_int, x_int]
-        cr1 = np.append(cr1, cr)
-        vr = variances[y_int, x_int]
-        vr1 = np.append(vr1, vr)
-        sg = significances[y_int, x_int]
-        sg1 = np.append(sg1, sg)
-        xp = exposures[y_int, x_int]
-        xp1 = np.append(xp1, xp)
+            # WCS data
+            wcs = WCS(header)
+            x, y = wcs.all_world2pix(current_ra, current_dec, 0)
+            x_int, y_int = int(round(x.item())), int(round(y.item()))
 
-        # Annular region
-        acr = np.array([])
-        avr = np.array([])
+            pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
+            offset1 = np.append(offset1, pointing.separation(jupiter_coords[index]).deg)
 
-        for x in range(x_int - 40, x_int + 40):
-            for y in range(y_int - 40, y_int + 40):
-                if (x - x_int)**2 + (y - y_int)**2 < 20**2:
-                    continue
-                acr = np.append(acr, intensities[y, x])
-                avr = np.append(avr, variances[y, x])
+            if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
+                cr = intensities[y_int, x_int]
+                cr1 = np.append(cr1, cr)
+                vr = variances[y_int, x_int]
+                vr1 = np.append(vr1, vr)
+                sg = significances[y_int, x_int]
+                sg1 = np.append(sg1, sg)
+                xp = exposures[y_int, x_int]
+                xp1 = np.append(xp1, xp)
+            else:
+                print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
+                continue
 
-        acr1 = np.append(acr1, np.mean(acr))
-        avr1 = np.append(avr1, np.mean(avr))
+            # Annular region
+            acr = np.array([])
+            avr = np.array([])
 
-        # Fit a Gaussian PSF
-        X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
-        x_grid, y_grid = np.meshgrid(X, Y)
+            for x in range(x_int - 40, x_int + 40):
+                for y in range(y_int - 40, y_int + 40):
+                    if (x - x_int)**2 + (y - y_int)**2 < 20**2:
+                        continue
+                    acr = np.append(acr, intensities[y, x])
+                    avr = np.append(avr, variances[y, x])
 
-        def Gaussian2D_fixed(xy, amplitude, xo, yo):
-            return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+            acr1 = np.append(acr1, np.mean(acr))
+            avr1 = np.append(avr1, np.mean(avr))
 
-        popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
-        popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
-        
-        cr1_cpsf = np.append(cr1_cpsf, popt[0])
-        cr1_psf = np.append(cr1_psf, popt2[0])
-        err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
-        err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+            # Fit a Gaussian PSF
+            X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
+            x_grid, y_grid = np.meshgrid(X, Y)
+
+            def Gaussian2D_fixed(xy, amplitude, xo, yo):
+                return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+
+            popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
+            popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+            
+            cr1_cpsf = np.append(cr1_cpsf, popt[0])
+            cr1_psf = np.append(cr1_psf, popt2[0])
+            err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
+            err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+        except Exception as e:
+            print(f"Error processing file {img}: {e}")
+            continue
 
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
