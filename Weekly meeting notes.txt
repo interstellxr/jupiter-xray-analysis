@@ -291,3 +291,18 @@ So:
 [X] Modify all codes to adapt to new ScWs and exact positions of Jupiter
     -> precise positions done directly when saving ScW table, just need to change how I load the data
 [] Re-query the rest of the energy ranges
+
+Meeting notes:
+- main error source is on measurement (eg. of jupiter count rate )
+- next main error source is crab flux (not count rate) (SPI paper, 7%)
+- check error of conversion factor smaller than count rate measurmeent of jupiter error 
+- this is to be written in report!
+
+- full table only ouputs 1/4 of total scws, so get multiple tables maybe every 5 years to get all scws
+- dont normalize exposure map or anything (just sum)
+
+- flux conversion jem-x : same thing since crab measurement in jem-x is also count/s/cm2 so cancels out!
+
+- look at histogram and check compatibility with noise / constant flux
+- goal: you get average flux => upper limit + instantaneous flux (max) 
+    => compare with literature (point on spectrum)
