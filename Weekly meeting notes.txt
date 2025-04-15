@@ -306,3 +306,19 @@ Meeting notes:
 - look at histogram and check compatibility with noise / constant flux
 - goal: you get average flux => upper limit + instantaneous flux (max) 
     => compare with literature (point on spectrum)
+
+
+WEEK 9 ------------------------------------------------------------------------------------------------
+To-do:
+[X] Fetch the rest of the ScWs and combine tables to make a full table
+    - Plus at this point I have already filtered for bad ScWs as per ISDC and first/last few pointings
+    - Anyway, I spent some time figuring out how to query the whole sky by splitting it into different regions.
+    In the end, I just used Jupiter's yearly position over the campaign and chose the regions correspondingly => 915 ScWs.
+    - As of 14/04/2025, the website to get INTEGRAL's position was down, so the table does not contain the precise Jupiter positions.
+[] Query the other energy ranges
+    [] Finish 15-30 keV
+    [] JEM-X 
+    [] 30-60 keV
+[] Need to fix error / analysis for JEM-X data 
+    - JEM-X observation date not in header? -> get from the table / using the ScW ID
+    - Not in same unit: doesn't change anything for flux conversion as same unit for Crab

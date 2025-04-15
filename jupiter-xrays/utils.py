@@ -197,7 +197,7 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
     return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
 
-def get_integral_position(obs_date): # used in JupiterPos function
+def get_integral_position(obs_date: str): # used in JupiterPos function
     url = f"https://www.astro.unige.ch/mmoda/dispatch-data/gw/scsystem/api/v1.0/sc/{obs_date}/0/0"
     response = requests.get(url)
     if response.status_code == 200:
@@ -210,7 +210,7 @@ def get_integral_position(obs_date): # used in JupiterPos function
         raise ValueError("Error fetching INTEGRAL data")
 
 
-def JupiterPos(fits_path="../data/Jupiter/15-30keV/Images", parallax=True):
+def JupiterPos(fits_path: str, parallax: bool=True):
     """
     Get the position of Jupiter for given ScWs from FITS files, 
     with the option of accounting for parallax (i.e. position of INTEGRAL).
@@ -292,7 +292,7 @@ crab_coordinates = SkyCoord.from_name("Crab")
 crab_ra, crab_dec = crab_coordinates.ra.deg, crab_coordinates.dec.deg
 
 
-def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
+def loadCrabIMG(path: str):
     """
     Load Crab images from FITS files and extract relevant data.
     Parameters:
@@ -338,6 +338,10 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
     date1 = np.array([])
     offset1 = np.array([])
 
+    scw_data = np.loadtxt("../data/crab_scws.txt", dtype=str, usecols=(0, 1), skiprows=1, delimiter=",")
+    scw_ids = scw_data[:, 0]
+    start_mjds = scw_data[:, 1].astype(float)
+
     for img in glob.glob(f"{path}/*"):
 
         try:
@@ -354,7 +358,7 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
             significances = np.nan_to_num(significances, nan=0.0)
             exposures = hdu[5].data
             exposures = np.nan_to_num(exposures, nan=0.0)
-            date1 = np.append(date1, header["DATE-OBS"])
+
 
             # WCS data
             wcs = WCS(header)
@@ -366,17 +370,19 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
 
             # Single pixel data
             if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
-                cr = intensities[y_int, x_int]
-                cr1 = np.append(cr1, cr)
-                vr = variances[y_int, x_int]
-                vr1 = np.append(vr1, vr)
-                sg = significances[y_int, x_int]
-                sg1 = np.append(sg1, sg)
-                xp = exposures[y_int, x_int]
-                xp1 = np.append(xp1, xp)
+                pass
             else:
                 print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
                 continue
+
+            cr = intensities[y_int, x_int]
+            cr1 = np.append(cr1, cr)
+            vr = variances[y_int, x_int]
+            vr1 = np.append(vr1, vr)
+            sg = significances[y_int, x_int]
+            sg1 = np.append(sg1, sg)
+            xp = exposures[y_int, x_int]
+            xp1 = np.append(xp1, xp)
 
             # Annular region
             acr = np.array([])
@@ -406,6 +412,20 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
             cr1_psf = np.append(cr1_psf, popt2[0])
             err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+
+            # Dates
+
+            if path == "../data/Crab/3-15keV/Images":
+                filename = os.path.basename(img)
+                scw_id = filename.replace("mosaic.fits", "")
+                match_idx = np.where(scw_ids == scw_id)[0]
+                mjd = start_mjds[match_idx[0]]
+                isot = Time(mjd, format="mjd").isot
+                date1= np.append(date1, isot)
+            else:
+                date1 = np.append(date1, header["DATE-OBS"])
+            
+
         except Exception as e:
             print(f"Error processing file {img}: {e}")
             continue
@@ -413,7 +433,7 @@ def loadCrabIMG(path="../data/CrabIMG_FITS_15_30"):
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
 
-def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
+def loadCrabLC(path: str):
     """
     Load Crab light curves from FITS files and extract relevant data.
     Parameters:
@@ -452,7 +472,7 @@ def loadCrabLC(path="../data/CrabLC_FITS_15_30"):
 
 ## Below are the same type of functions, but for Jupiter's data
 
-def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jupiter_table.dat"):
+def loadJupiterIMG(path: str, scw_path: str):
     """
     Load Jupiter images from FITS files and extract relevant data.
     Parameters:
@@ -505,6 +525,8 @@ def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jup
     jupiter_ra = jupiter_table['jupiter_ra'] # ICRS
     jupiter_dec = jupiter_table['jupiter_dec']
 
+    jupiter_scw = jupiter_table['scw_id']
+
     jdates = jupiter_table['start_date'] # MJD
     jdates = [Time(jd, format="mjd").datetime for jd in jdates]
 
@@ -520,12 +542,18 @@ def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jup
             significances = hdu[4].data
             exposures = hdu[5].data
 
-            date_obs = Time(header["DATE-OBS"]).datetime
+            # date_obs = Time(header["DATE-OBS"]).datetime
 
             # Find closest Jupiter position in time
-            closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
-            current_ra = jupiter_ra[closest_idx]
-            current_dec = jupiter_dec[closest_idx]
+            # closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
+            # current_ra = jupiter_ra[closest_idx]
+            # current_dec = jupiter_dec[closest_idx]
+
+            filename = os.path.basename(img)
+            scw_id = filename.replace(".001mosaic.fits", "")
+            match_idx = np.where(jupiter_scw == scw_id)[0]
+            current_ra = jupiter_ra[match_idx]
+            current_dec = jupiter_dec[match_idx]
 
             jupiter_coords = SkyCoord(ra=current_ra, dec=current_dec, unit=("deg", "deg"), frame='fk5')
 
@@ -536,17 +564,19 @@ def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jup
             pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
 
             if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
-                cr = intensities[y_int, x_int]
-                cr1 = np.append(cr1, cr)
-                vr = variances[y_int, x_int]
-                vr1 = np.append(vr1, vr)
-                sg = significances[y_int, x_int]
-                sg1 = np.append(sg1, sg)
-                xp = exposures[y_int, x_int]
-                xp1 = np.append(xp1, xp)
+                pass
             else:
                 print(f"Warning: Index out of bounds for file {img}. Skipping this file.")
                 continue
+
+            cr = intensities[y_int, x_int]
+            cr1 = np.append(cr1, cr)
+            vr = variances[y_int, x_int]
+            vr1 = np.append(vr1, vr)
+            sg = significances[y_int, x_int]
+            sg1 = np.append(sg1, sg)
+            xp = exposures[y_int, x_int]
+            xp1 = np.append(xp1, xp)
 
             acr = np.array([])
             avr = np.array([])
@@ -579,6 +609,14 @@ def loadJupiterIMG(path="../data/Jupiter/15-30keV/Images", scw_path="../data/jup
             cr1_psf = np.append(cr1_psf, popt2[0])
             err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+
+            # Dates
+            if path == "../data/Jupiter/3-15keV/Images":
+                mjd = jdates[match_idx[0]]
+                isot = Time(mjd, format="mjd").isot
+                date1= np.append(date1, isot)
+            else:
+                date1 = np.append(date1, header["DATE-OBS"])
 
         except Exception as e:
             print(f"Error processing file {img}: {e}")
