@@ -401,11 +401,14 @@ def loadCrabIMG(path: str):
             X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
             x_grid, y_grid = np.meshgrid(X, Y)
 
+            xy = (x_grid.ravel(), y_grid.ravel())
+            z = intensities.ravel()
+
             def Gaussian2D_fixed(xy, amplitude, xo, yo):
                 return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
 
-            popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
-            popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+            popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
+            popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
             
             cr1_cpsf = np.append(cr1_cpsf, popt[0])
             cr1_psf = np.append(cr1_psf, popt2[0])
@@ -591,11 +594,14 @@ def loadJupiterIMG(path: str, scw_path: str):
             X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
             x_grid, y_grid = np.meshgrid(X, Y)
 
+            xy = (x_grid.ravel(), y_grid.ravel())
+            z = intensities.ravel()
+
             def Gaussian2D_fixed(xy, amplitude, xo, yo):
                 return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
 
-            popt, pcov = curve_fit(Gaussian2D_fixed, (x, y), intensities.ravel(), p0=[cr, x_int, y_int]) 
-            popt2, pcov2 = curve_fit(Gaussian2D, (x, y), intensities.ravel(), p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+            popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
+            popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
 
             # Append the results
             date1 = np.append(date1, header["DATE-OBS"])

@@ -322,3 +322,6 @@ To-do:
 [X] Need to fix error / analysis for JEM-X data 
     - JEM-X observation date not in header? -> get from the table / using the ScW ID
     - Not in same unit: doesn't change anything for flux conversion as same unit for Crab
+
+- added code in jscws notebook to create column stating whether Jupiter is in JEM-X's FOV
+- fixed utils code for psf fitting
