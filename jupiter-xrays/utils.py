@@ -359,7 +359,6 @@ def loadCrabIMG(path: str):
             exposures = hdu[5].data
             exposures = np.nan_to_num(exposures, nan=0.0)
 
-
             # WCS data
             wcs = WCS(header)
             x, y = wcs.all_world2pix(crab_ra, crab_dec, 0)

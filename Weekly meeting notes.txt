@@ -319,6 +319,6 @@ To-do:
     [] Finish 15-30 keV
     [] JEM-X 
     [] 30-60 keV
-[] Need to fix error / analysis for JEM-X data 
+[X] Need to fix error / analysis for JEM-X data 
     - JEM-X observation date not in header? -> get from the table / using the ScW ID
     - Not in same unit: doesn't change anything for flux conversion as same unit for Crab
