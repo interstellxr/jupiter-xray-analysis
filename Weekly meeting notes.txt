@@ -295,7 +295,7 @@ So:
 Meeting notes:
 - main error source is on measurement (eg. of jupiter count rate )
 - next main error source is crab flux (not count rate) (SPI paper, 7%)
-- check error of conversion factor smaller than count rate measurmeent of jupiter error 
+- check error of conversion factor smaller than count rate measurement of jupiter error 
 - this is to be written in report!
 
 - full table only ouputs 1/4 of total scws, so get multiple tables maybe every 5 years to get all scws
@@ -322,6 +322,8 @@ To-do:
 [X] Need to fix error / analysis for JEM-X data 
     - JEM-X observation date not in header? -> get from the table / using the ScW ID
     - Not in same unit: doesn't change anything for flux conversion as same unit for Crab
+[] See previous week meeting notes: need to fix/change stacking (no normalization)
 
 - added code in jscws notebook to create column stating whether Jupiter is in JEM-X's FOV
 - fixed utils code for psf fitting
+- website to get INTEGRAL's position is still not working (as of 16/04 @ 14h)
