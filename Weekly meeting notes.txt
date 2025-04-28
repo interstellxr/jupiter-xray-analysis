@@ -322,8 +322,26 @@ To-do:
 [X] Need to fix error / analysis for JEM-X data 
     - JEM-X observation date not in header? -> get from the table / using the ScW ID
     - Not in same unit: doesn't change anything for flux conversion as same unit for Crab
-[] See previous week meeting notes: need to fix/change stacking (no normalization)
+[X] See previous week meeting notes: need to fix/change stacking (no normalization)
 
 - added code in jscws notebook to create column stating whether Jupiter is in JEM-X's FOV
 - fixed utils code for psf fitting
 - website to get INTEGRAL's position is still not working (as of 16/04 @ 14h)
+
+WEEK 10 ------------------------------------------------------------------------------------------------
+To-do (currrent data):
+[X] Detect higher fluxes, above 3-sigma level
+[X] Calculate probability these higher fluxes are random fluctuations (p value)
+[] Look at images where there is an excess and check if anything is visible
+[] Look at specific light curves of the ScWs (zooms, using isgri_lc)
+[X] Stacking/histograms: 
+    [X] Normalize S/N gaussian
+    [X] Don't normalize exposure plot (just accumulate)
+    [X] Fit gaussian to S/N and check compatibility with noise
+    [X] Plot a line corresponding to S/N at source (pixel value is fine) => probability
+[X] Plot significance over time (= S/N = countrate/annularSTDdev or /STDdev at source)
+[X] Plot annular countrate or flux over time as it shows if whole image is noisy
+(can also see this in annular std vs std) 
+[] For the highest flux you get, plot point on spectrum from literature
+[] Introduce average offset, taken from Crab for the corresponding energy range
+(offset between pixel and LC values)

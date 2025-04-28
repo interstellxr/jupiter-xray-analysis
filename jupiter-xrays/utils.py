@@ -165,8 +165,7 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
 
     crab_years = np.array(crab_years, dtype=int)
 
-    
-    for date, count_rate in zip(obs_times, countrates):
+    for date, count_rate, var in zip(obs_times, countrates, variances):
         year = date.year
         # there are 23 years of crab data starting from 2003 and ending in 2025
         # so the index 0 corresponds to 2003, and the index 22 corresponds to 2025, etc.
@@ -186,13 +185,13 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
 
         yearly_conversion_factor = ph_flux_num / mean
         yearly_conversion_factor_erg = ph_flux_num_erg / mean
-        yearly_conversion_factor_std = ph_flux_num / std
-        yearly_conversion_factor_erg_std = ph_flux_num_erg / std
+        # yearly_conversion_factor_std = ph_flux_num / std
+        # yearly_conversion_factor_erg_std = ph_flux_num_erg / std
 
         photon_fluxes = np.append(photon_fluxes, yearly_conversion_factor * count_rate)
-        photon_fluxes_std = np.append(photon_fluxes_std, yearly_conversion_factor_std * count_rate)
+        photon_fluxes_std = np.append(photon_fluxes_std, yearly_conversion_factor * np.sqrt(var)) # main error source is jupiter error, not crab error
         erg_fluxes = np.append(erg_fluxes, yearly_conversion_factor_erg * count_rate)
-        erg_fluxes_std = np.append(erg_fluxes_std, yearly_conversion_factor_erg_std * count_rate)
+        erg_fluxes_std = np.append(erg_fluxes_std, yearly_conversion_factor_erg * np.sqrt(var))
     
     return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
@@ -524,19 +523,19 @@ def loadJupiterIMG(path: str, scw_path: str):
 
     jupiter_table = ascii.read(scw_path)
 
-    jupiter_ra = jupiter_table['jupiter_ra'] # ICRS
-    jupiter_dec = jupiter_table['jupiter_dec']
+    jupiter_ra = jupiter_table['jupiter_ra'].data # ICRS
+    jupiter_dec = jupiter_table['jupiter_dec'].data
 
-    jupiter_scw = jupiter_table['scw_id']
+    jupiter_scw = [str(id).zfill(12) + ".00" + str(ver) for id, ver in zip(jupiter_table['scw_id'].data, jupiter_table['scw_ver'].data)]
 
-    jdates = jupiter_table['start_date'] # MJD
+    jdates = jupiter_table['start_date'].data # MJD
     jdates = [Time(jd, format="mjd").datetime for jd in jdates]
 
-    for img in glob.glob(f"{path}/*"):
+    for img in os.listdir(path):
 
         try: 
 
-            hdu = fits.open(img)
+            hdu = fits.open(os.path.join(path, img))
             header = hdu[2].header
 
             intensities = hdu[2].data
@@ -551,9 +550,9 @@ def loadJupiterIMG(path: str, scw_path: str):
             # current_ra = jupiter_ra[closest_idx]
             # current_dec = jupiter_dec[closest_idx]
 
-            filename = os.path.basename(img)
-            scw_id = filename.replace(".001mosaic.fits", "")
-            match_idx = np.where(jupiter_scw == scw_id)[0]
+            filename = img
+            scw_id = filename[:16]
+            match_idx = jupiter_scw.index(scw_id)
             current_ra = jupiter_ra[match_idx]
             current_dec = jupiter_dec[match_idx]
 
@@ -604,7 +603,6 @@ def loadJupiterIMG(path: str, scw_path: str):
             popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
 
             # Append the results
-            date1 = np.append(date1, header["DATE-OBS"])
             offset1 = np.append(offset1, pointing.separation(jupiter_coords).deg)
 
             acr1 = np.append(acr1, np.mean(acr))
@@ -624,7 +622,7 @@ def loadJupiterIMG(path: str, scw_path: str):
                 date1 = np.append(date1, header["DATE-OBS"])
 
         except Exception as e:
-            print(f"Error processing file {img}: {e}")
+            print(f"Error processing file {img}: {e}") 
             continue
 
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
