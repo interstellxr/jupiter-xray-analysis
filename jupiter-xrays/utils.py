@@ -543,8 +543,6 @@ def loadJupiterIMG(path: str, scw_path: str):
             significances = hdu[4].data
             exposures = hdu[5].data
 
-            # date_obs = Time(header["DATE-OBS"]).datetime
-
             # Find closest Jupiter position in time
             # closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
             # current_ra = jupiter_ra[closest_idx]

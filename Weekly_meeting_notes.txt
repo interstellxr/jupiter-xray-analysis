@@ -345,3 +345,9 @@ To-do (currrent data):
 [] For the highest flux you get, plot point on spectrum from literature
 [] Introduce average offset, taken from Crab for the corresponding energy range
 (offset between pixel and LC values)
+
+Other
+[] python script for plotting and for making statistical analyses automatic with new data
+[X] make list of previous meeting notes to make sure everything is done and also for the report
+[] report organization plan
+[] find/read more papers with spectra and stuff

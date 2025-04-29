@@ -1,0 +1,20 @@
+Discussion/report:
+- error sources: main error source is on measurement (eg. of jupiter count rate ), next main error source is crab flux (not count rate) (SPI paper, 7%), parallax, psf
+- talk about psf and pixel offsets and how used for Jupiter data using Crab LCs
+- talk about flux conversion
+- mention ScW distributions and methodology of querying and parallax correction, ScW selection
+- error/noise : annular error and count rates let us see if image in is noisy in general
+
+Data analysis:
+- check error of conversion factor smaller than count rate measurement of jupiter error 
+
+- Crab LC queries for JEM-X & 30-60 keV
+    - From these, get offsets and save them, to then use on Jupiter data
+    - Also get the yearly averages (or monthly) and use for flux conversion
+- Finish Jupiter queries (remember for JEM-X you have extra column to check if Jupiter is in FOV, no need to query all ScWs)
+- Do all statistics on new data (after having introduced offsets)
+- Stacking on new data
+
+- Spectra and upper limits
+
+- One servers are back up, also use parallax correction on already saved table
