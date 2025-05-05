@@ -349,5 +349,12 @@ To-do (currrent data):
 Other
 [] python script for plotting and for making statistical analyses automatic with new data
 [X] make list of previous meeting notes to make sure everything is done and also for the report
-[] report organization plan
+[X] report organization plan
 [] find/read more papers with spectra and stuff
+
+
+WEEK 11 ------------------------------------------------------------------------------------------------
+To-do
+[X] Extract data from article using digitizer
+[X] Got 3-sigma value (average + 3sigma) for current data
+[] Query more data to get better upper limits
