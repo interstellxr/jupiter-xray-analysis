@@ -143,9 +143,9 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
         obs_times = np.array(obs_times)
 
     if instrument == "ISGRI":
-        gamma = 2.12  # photon index of ISGRI 
+        gamma = 2.13  # photon index of ISGRI 
         E0 = 100  # 100 keV reference energy
-        K = 6.2e-4  # flux (photons/cm2/s) @ 100 keV 
+        K = 6.5e-4  # flux (photons/cm2/s) @ 100 keV 
     elif instrument == "JEM-X":
         gamma = 2.08  # photon index of JEM-X 2 (2.15 for JEM-X 1)
         E0 = 1  # 1 keV reference energy

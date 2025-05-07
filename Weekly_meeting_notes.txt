@@ -358,3 +358,9 @@ To-do
 [X] Extract data from article using digitizer
 [X] Got 3-sigma value (average + 3sigma) for current data
 [] Query more data to get better upper limits
+[] Continue report
+
+Meeting notes:
+- upper limit is the error on the average (weighted average) * how many sigma you want (3 generally)
+- stacked map error should be compatible with this error
+- for each energy range we can plot two upper limits: persistent and sporadic
