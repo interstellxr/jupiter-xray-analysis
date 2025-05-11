@@ -543,6 +543,11 @@ def loadJupiterIMG(path: str, scw_path: str):
             significances = hdu[4].data
             exposures = hdu[5].data
 
+            if intensities is None or intensities.size == 0 or intensities.sum() == 0:
+                print(f"Warning: Empty data in file {img}. Skipping this file.")
+                continue
+
+
             # Find closest Jupiter position in time
             # closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
             # current_ra = jupiter_ra[closest_idx]
