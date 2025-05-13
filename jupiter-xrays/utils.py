@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from astropy.wcs import WCS
+from astropy.wcs import WCS, FITSFixedWarning
 from scipy.optimize import curve_fit
 import glob
 import os
@@ -16,8 +16,18 @@ import astropy.units as u
 from astroquery.jplhorizons import Horizons
 import requests
 from astropy.io import ascii
+import warnings
+
+warnings.simplefilter('ignore', FITSFixedWarning)
 
 ## Define global functions
+
+def simple_weighted_average(values, errors):
+    weights = 1 / np.array(errors)**2
+    weighted_avg = np.sum(weights * values) / np.sum(weights)
+    weighted_err = np.sqrt(1 / np.sum(weights))
+    return weighted_avg, weighted_err
+
 
 def Gaussian2D(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     x, y = xy
@@ -350,13 +360,9 @@ def loadCrabIMG(path: str):
 
             # Extract the data from the FITS file
             intensities = hdu[2].data
-            intensities = np.nan_to_num(intensities, nan=0.0)
             variances = hdu[3].data
-            variances = np.nan_to_num(variances, nan=0.0)
             significances = hdu[4].data
-            significances = np.nan_to_num(significances, nan=0.0)
             exposures = hdu[5].data
-            exposures = np.nan_to_num(exposures, nan=0.0)
 
             # WCS data
             wcs = WCS(header)
@@ -364,7 +370,6 @@ def loadCrabIMG(path: str):
             x_int, y_int = int(round(x.item())), int(round(y.item()))
 
             pointing = SkyCoord(ra=header['CRVAL1'], dec=header['CRVAL2'], unit=("deg", "deg"))
-            offset1 = np.append(offset1, pointing.separation(crab_coordinates).deg)
 
             # Single pixel data
             if 0 <= y_int < intensities.shape[0] and 0 <= x_int < intensities.shape[1]:
@@ -374,13 +379,9 @@ def loadCrabIMG(path: str):
                 continue
 
             cr = intensities[y_int, x_int]
-            cr1 = np.append(cr1, cr)
-            vr = variances[y_int, x_int]
-            vr1 = np.append(vr1, vr)
+            vr = variances[y_int, x_int]  
             sg = significances[y_int, x_int]
-            sg1 = np.append(sg1, sg)
             xp = exposures[y_int, x_int]
-            xp1 = np.append(xp1, xp)
 
             # Annular region
             acr = np.array([])
@@ -392,9 +393,6 @@ def loadCrabIMG(path: str):
                         continue
                     acr = np.append(acr, intensities[y, x])
                     avr = np.append(avr, variances[y, x])
-
-            acr1 = np.append(acr1, np.mean(acr))
-            avr1 = np.append(avr1, np.mean(avr))
 
             # Fit a Gaussian PSF
             X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
@@ -413,6 +411,16 @@ def loadCrabIMG(path: str):
             cr1_psf = np.append(cr1_psf, popt2[0])
             err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+
+            cr1 = np.append(cr1, cr)
+            vr1 = np.append(vr1, vr)
+            sg1 = np.append(sg1, sg)
+            xp1 = np.append(xp1, xp)
+
+            acr1 = np.append(acr1, np.mean(acr))
+            avr1 = np.append(avr1, np.mean(avr))
+
+            offset1 = np.append(offset1, pointing.separation(crab_coordinates).deg)
 
             # Dates
 
@@ -473,7 +481,7 @@ def loadCrabLC(path: str):
 
 ## Below are the same type of functions, but for Jupiter's data
 
-def loadJupiterIMG(path: str, scw_path: str):
+def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
     """
     Load Jupiter images from FITS files and extract relevant data.
     Parameters:
@@ -529,7 +537,7 @@ def loadJupiterIMG(path: str, scw_path: str):
     jupiter_scw = [str(id).zfill(12) + ".00" + str(ver) for id, ver in zip(jupiter_table['scw_id'].data, jupiter_table['scw_ver'].data)]
 
     jdates = jupiter_table['start_date'].data # MJD
-    jdates = [Time(jd, format="mjd").datetime for jd in jdates]
+    jdates = [Time(jd, format="mjd").mjd for jd in jdates]
 
     for img in os.listdir(path):
 
@@ -543,10 +551,15 @@ def loadJupiterIMG(path: str, scw_path: str):
             significances = hdu[4].data
             exposures = hdu[5].data
 
+            # Remove NaN values
+            intensities = np.nan_to_num(intensities, nan=0.0)
+            variances = np.nan_to_num(variances, nan=0.0)
+            significances = np.nan_to_num(significances, nan=0.0)
+            exposures = np.nan_to_num(exposures, nan=0.0)
+
             if intensities is None or intensities.size == 0 or intensities.sum() == 0:
                 print(f"Warning: Empty data in file {img}. Skipping this file.")
                 continue
-
 
             # Find closest Jupiter position in time
             # closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
@@ -574,24 +587,9 @@ def loadJupiterIMG(path: str, scw_path: str):
                 continue
 
             cr = intensities[y_int, x_int]
-            cr1 = np.append(cr1, cr)
             vr = variances[y_int, x_int]
-            vr1 = np.append(vr1, vr)
             sg = significances[y_int, x_int]
-            sg1 = np.append(sg1, sg)
             xp = exposures[y_int, x_int]
-            xp1 = np.append(xp1, xp)
-
-            acr = np.array([])
-            avr = np.array([])
-
-            for x in range(x_int - 40, x_int + 40):
-                for y in range(y_int - 40, y_int + 40):
-                    if (x - x_int)**2 + (y - y_int)**2 < 20**2:
-                        continue
-                    acr = np.append(acr, intensities[y, x])
-                    avr = np.append(avr, variances[y, x])
-
 
             X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
             x_grid, y_grid = np.meshgrid(X, Y)
@@ -608,6 +606,16 @@ def loadJupiterIMG(path: str, scw_path: str):
             # Append the results
             offset1 = np.append(offset1, pointing.separation(jupiter_coords).deg)
 
+            acr = np.array([])
+            avr = np.array([])
+
+            for x in range(x_int - 40, x_int + 40):
+                for y in range(y_int - 40, y_int + 40):
+                    if (x - x_int)**2 + (y - y_int)**2 < 20**2:
+                        continue
+                    acr = np.append(acr, intensities[y, x])
+                    avr = np.append(avr, variances[y, x])
+
             acr1 = np.append(acr1, np.mean(acr))
             avr1 = np.append(avr1, np.mean(avr))
             
@@ -616,11 +624,16 @@ def loadJupiterIMG(path: str, scw_path: str):
             err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
             err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
 
+            cr1 = np.append(cr1, cr)
+            vr1 = np.append(vr1, vr)
+            sg1 = np.append(sg1, sg)
+            xp1 = np.append(xp1, xp)
+
             # Dates
-            if path == "../data/Jupiter/3-15keV/Images":
-                mjd = jdates[match_idx[0]]
+            if jemx == True:  
+                mjd = jdates[match_idx]
                 isot = Time(mjd, format="mjd").isot
-                date1= np.append(date1, isot)
+                date1 = np.append(date1, isot)
             else:
                 date1 = np.append(date1, header["DATE-OBS"])
 
