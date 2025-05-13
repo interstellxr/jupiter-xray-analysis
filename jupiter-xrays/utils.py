@@ -681,3 +681,87 @@ def loadJupiterLC(path="../data/Jupiter/15-30keV/Lightcurves"):
         err = np.append(err, rate_err)
 
     return cr, err, date
+
+## Functions to query data given a set of ScWs and energy ranges
+
+import oda_api.token 
+import logging
+from oda_api.api import DispatcherAPI
+from oda_api.plot_tools import OdaImage, OdaLightCurve, OdaSpectrum
+
+def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri", save_path: str="../data/", save: bool=False):
+
+    logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger('oda_api').addHandler(logging.StreamHandler())
+
+    disp_by_date = {}
+    data_by_date = {}
+    successful_scws = []
+
+    while True:
+
+        image_results = []
+
+        for scw_id in scws:
+
+            print(f"Trying SCW {scw_id}")
+
+            par_dict = {
+                "E1_keV": f"{energy_range[0]}",
+                "E2_keV": f"{energy_range[1]}",
+                "instrument": instrument,
+                "osa_version": "OSA11.2",
+                "product": f"{instrument}_image",
+                "product_type": "Real",
+                "scw_list": [scw_id],
+            }
+
+            if scw_id not in disp_by_date:
+                disp_by_date[scw_id] = DispatcherAPI(url="https://www.astro.unige.ch/mmoda/dispatch-data", wait=False)
+
+            _disp = disp_by_date[scw_id]
+            data = data_by_date.get(scw_id, None)
+
+            if data is None and not _disp.is_failed:
+                try:
+                    if not _disp.is_submitted:
+                        data = _disp.get_product(**par_dict, silent=True)
+                    else:
+                        _disp.poll()
+
+                    print("Is complete ", _disp.is_complete)
+                    if not _disp.is_complete:
+                        continue
+                    else:
+                        data = _disp.get_product(**par_dict, silent=True)
+                        data_by_date[scw_id] = data
+
+                except Exception as e:
+                    print(f"Query failed for SCW {scw_id}: {e}")
+                    continue
+
+            successful_scws.append(scw_id)
+            image_results.append(data)
+
+        n_complete = sum(1 for _disp in disp_by_date.values() if _disp.is_complete)
+        print(f"complete {n_complete} / {len(disp_by_date)}")
+
+        if n_complete == len(disp_by_date):
+            print("done!")
+            break
+        else:
+            print("not done")
+
+    new_results = []
+    new_scws = []
+    for scw_id, data in data_by_date.items():
+        if data is not None:
+            new_results.append(data)
+            new_scws.append(scw_id)
+
+    if save:
+        for i, data in enumerate(new_results):
+            im = OdaImage(data)
+            im.write_fits(os.path.join(save_path, f"{new_scws[i]}"))
+
+    return new_results, new_scws
