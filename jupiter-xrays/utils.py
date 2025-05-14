@@ -364,6 +364,16 @@ def loadCrabIMG(path: str):
             significances = hdu[4].data
             exposures = hdu[5].data
 
+             # Remove NaN values
+            intensities = np.nan_to_num(intensities, nan=0.0)
+            variances = np.nan_to_num(variances, nan=0.0)
+            significances = np.nan_to_num(significances, nan=0.0)
+            exposures = np.nan_to_num(exposures, nan=0.0)
+
+            if intensities is None or intensities.size == 0 or intensities.sum() == 0:
+                print(f"Warning: Empty data in file {img}. Skipping this file.")
+                continue
+
             # WCS data
             wcs = WCS(header)
             x, y = wcs.all_world2pix(crab_ra, crab_dec, 0)
