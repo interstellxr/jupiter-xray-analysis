@@ -23,6 +23,7 @@ import oda_api.token
 import logging
 from oda_api.api import DispatcherAPI
 from oda_api.plot_tools import OdaImage, OdaLightCurve, OdaSpectrum
+from scipy.ndimage import shift
 
 warnings.simplefilter('ignore', FITSFixedWarning) # Ignore FITSFixedWarning for WCS
 
@@ -597,3 +598,295 @@ def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri"
             im = OdaImage(data)
             im.write_fits(os.path.join(save_path, f"{new_scws[i]}"))
     return new_results, new_scws
+
+## Stacking
+
+def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = '../data/jupiter_table.dat', crab_dir: str = "../data/weighted_crab_averages.txt"): 
+    # Load Jupiter data from table
+    jupiter_table = ascii.read(table_dir)
+    jupiter_ra = jupiter_table['jupiter_ra'].data
+    jupiter_dec = jupiter_table['jupiter_dec'].data
+    jdates = jupiter_table['start_date'].data
+    jdates = [Time(jd, format="mjd").datetime for jd in jdates]
+    jupiter_scws = [str(id).zfill(12) + ".00" + str(ver) for id, ver in zip(jupiter_table['scw_id'].data, jupiter_table['scw_ver'].data)]
+
+    # Load Crab weighted averages
+    data = np.genfromtxt(crab_dir, delimiter='\t', skip_header=1, dtype=None, encoding=None)
+
+    crabENERGY = data['f0'] 
+    crabYEAR = data['f1'].astype(int)
+    crabCR = data['f2'].astype(float)
+    crabERR = data['f3'].astype(float)
+
+    mask = crabENERGY == "15-30 keV"
+    crabYEAR_15_30 = crabYEAR[mask]
+    crabCR_15_30 = crabCR[mask]
+    crabERR_15_30 = crabERR[mask]
+
+    mask = crabENERGY == "3-15 keV"
+    crabYEAR_3_15 = crabYEAR[mask]
+    crabCR_3_15 = crabCR[mask]
+    crabERR_3_15 = crabERR[mask]
+
+    mask = crabENERGY == "30-60 keV"
+    crabYEAR_30_60 = crabYEAR[mask]
+    crabCR_30_60 = crabCR[mask]
+    crabERR_30_60 = crabERR[mask]
+
+    # Proceed to stacking
+    s_var = None       # variance of count rate
+    s_flu = None       # stacked count rate (original countrate stacking)
+    s_expo = None      # exposure stacking
+
+    s_flux = None      # stacked photon flux (converted from count rate)
+    s_var_flux = None  # variance of photon flux
+
+    total_max_isgri_exp = 0
+    body_lim = {}
+
+    body_name = 'Jupiter'
+
+    for scw in np.sort(os.listdir(dir)):
+        if not scw.endswith(".fits"):
+            continue
+
+        try:
+            scw_id = scw[:16]
+            idx = jupiter_scws.index(scw_id)
+            
+            f = fits.open(os.path.join(dir, scw))
+
+            if dir == "../data/Jupiter/3-15keV/Images":
+                flu = [e for e in f if e.header.get('IMATYPE', None) == "RECONSTRUCTED"][0]
+                date_obs = Time(jdates[idx]).datetime
+            else:
+                flu = [e for e in f if e.header.get('IMATYPE', None) == "INTENSITY"][0]
+                date_obs = Time(flu.header['DATE-OBS']).datetime
+            
+            sig = [e for e in f if e.header.get('IMATYPE', None) == "SIGNIFICANCE"][0]
+            var = [e for e in f if e.header.get('IMATYPE', None) == "VARIANCE"][0]
+            expo = [e for e in f if e.header.get('IMATYPE', None) == "EXPOSURE"][0]
+
+            if sig.data is None or sig.size == 0 or sig.data.sum() == 0:
+                print(f"Empty significance image for {scw_id}")
+                continue
+
+            wcs = WCS(flu.header)
+
+            j_ra = jupiter_ra[idx]
+            j_dec = jupiter_dec[idx]
+
+        except Exception as e:
+            print(f"Failed to open {scw}: {e}")
+            continue
+        
+        try:
+            body_i, body_j = [int(i) for i in wcs.all_world2pix(j_ra, j_dec, 0)]
+        except Exception as e:
+            print(f"Coordinate transform failed: {e}")
+            continue
+
+        detection_span = 20
+
+        f_data = flu.data[body_i - detection_span : body_i + detection_span, body_j - detection_span : body_j + detection_span]
+        v_data = var.data[body_i - detection_span : body_i + detection_span, body_j - detection_span : body_j + detection_span]
+        ex_data = expo.data[body_i - detection_span : body_i + detection_span, body_j - detection_span : body_j + detection_span]
+
+        # Convert count rate and variance maps to photon flux and flux error maps pixel-wise
+        flux_map = np.full_like(f_data, np.nan, dtype=np.float64)
+        flux_err_map = np.full_like(f_data, np.nan, dtype=np.float64)
+
+        ny, nx = f_data.shape
+        for iy in range(ny):
+            for ix in range(nx):
+                cr = f_data[iy, ix]
+                var_pix = v_data[iy, ix]
+
+                if np.isnan(cr) or var_pix <= 0:
+                    continue
+
+                if dir == "../data/Jupiter/15-30keV/Images":
+                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                        countrates=[cr],
+                        variances=[var_pix],
+                        obs_times=[date_obs],
+                        crab_yearly_means=crabCR_15_30,
+                        crab_yearly_stds=crabERR_15_30,
+                        crab_years=crabYEAR_15_30,
+                        instrument="ISGRI",
+                        energy_range=(15, 30)
+                    )
+                elif dir == "../data/Jupiter/3-15keV/Images":
+                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                        countrates=[cr],
+                        variances=[var_pix],
+                        obs_times=[date_obs],
+                        crab_yearly_means=crabCR_3_15,
+                        crab_yearly_stds=crabERR_3_15,
+                        crab_years=crabYEAR_3_15,
+                        instrument="JEM-X",
+                        energy_range=(3, 15)
+                    )
+                elif dir == "../data/Jupiter/30-60keV/Images":
+                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                        countrates=[cr],
+                        variances=[var_pix],
+                        obs_times=[date_obs],
+                        crab_yearly_means=crabCR_30_60,
+                        crab_yearly_stds=crabERR_30_60,
+                        crab_years=crabYEAR_30_60,
+                        instrument="ISGRI",
+                        energy_range=(30, 60)
+                    )
+
+                flux_map[iy, ix] = photon_fluxes[0]
+                flux_err_map[iy, ix] = photon_fluxes_std[0]
+
+        try:
+            if s_var is None:
+                # Initialize original count rate stacking
+                s_var = v_data.copy()
+                s_flu = f_data.copy()
+                s_expo = ex_data.copy()
+                # Initialize photon flux stacking
+                s_flux = flux_map.copy()
+                s_var_flux = flux_err_map**2
+                ref_wcs = wcs.deepcopy()
+                ref_j_ra, ref_j_dec = j_ra, j_dec  
+                ref_i, ref_j = body_i, body_j      
+            else:
+                m = ~np.isnan(v_data) & (v_data > 0)
+                # Stack count rate and variance (original)
+                s_flu[m] = (f_data[m] / v_data[m] + s_flu[m] / s_var[m]) / (1 / v_data[m] + 1 / s_var[m])
+                s_var[m] = 1 / (1 / v_data[m] + 1 / s_var[m])
+                s_expo[m] += ex_data[m]
+
+                # Stack photon flux and photon flux variance (new)
+                m_flux = ~np.isnan(flux_map) & (flux_err_map > 0)
+                s_flux[m_flux] = (flux_map[m_flux] / flux_err_map[m_flux]**2 + s_flux[m_flux] / s_var_flux[m_flux]) / (1 / flux_err_map[m_flux]**2 + 1 / s_var_flux[m_flux])
+                s_var_flux[m_flux] = 1 / (1 / flux_err_map[m_flux]**2 + 1 / s_var_flux[m_flux])
+
+                total_max_isgri_exp += np.nanmax(expo.data)
+
+        except Exception as e:
+            print(f"Failed to process SCW {scw_id}: {e}")
+            continue
+
+        body_lim[scw] = dict(
+            ic = np.nanmean(v_data**0.5), 
+            ic_std = np.nanstd(f_data), 
+        )
+
+    return s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j
+
+
+def convert_image_counts_to_flux(f_data, v_data, scw_obs_time, crab_means, crab_stds, crab_years):
+    # Initialize output arrays with NaNs, same shape as input
+    flux_map = np.full_like(f_data, np.nan, dtype=np.float64)
+    flux_err_map = np.full_like(f_data, np.nan, dtype=np.float64)
+    erg_flux_map = np.full_like(f_data, np.nan, dtype=np.float64)
+    erg_flux_err_map = np.full_like(f_data, np.nan, dtype=np.float64)
+
+    ny, nx = f_data.shape
+
+    # Loop over each pixel
+    for iy in range(ny):
+        for ix in range(nx):
+            cr = f_data[iy, ix]
+            var = v_data[iy, ix]
+
+            # Skip if data invalid or variance non-positive
+            if np.isnan(cr) or var <= 0:
+                continue
+
+            # cr2flux expects lists for countrates, variances, and obs_times
+            photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, _ = cr2flux(
+                countrates=[cr],
+                variances=[var],
+                obs_times=[scw_obs_time],
+                crab_yearly_means=crab_means,
+                crab_yearly_stds=crab_stds,
+                crab_years=crab_years,
+                instrument="ISGRI",
+                energy_range=(15, 30)
+            )
+
+            # Assign the scalar output to pixel
+            flux_map[iy, ix] = photon_fluxes[0]
+            flux_err_map[iy, ix] = photon_fluxes_std[0]
+            erg_flux_map[iy, ix] = erg_fluxes[0]
+            erg_flux_err_map[iy, ix] = erg_fluxes_std[0]
+
+    return flux_map, flux_err_map, erg_flux_map, erg_flux_err_map
+
+
+def stack_crab(dir: str):
+    s_var = None
+    s_flu = None
+    s_expo = None
+    total_max_isgri_exp = 0
+
+    body_lim = {}
+    body_name = 'Crab'
+
+    for scw in np.sort(os.listdir(dir)):
+        if scw.endswith(".fits"):
+            try:
+                scw_id = scw[:16]
+                f = fits.open(os.path.join(dir, scw))
+
+                if dir == "../data/Crab/3-15keV/Images":
+                    flu = [e for e in f if e.header.get('IMATYPE', None) == "RECONSTRUCTED"][0]
+                else:
+                    flu = [e for e in f if e.header.get('IMATYPE', None) == "INTENSITY"][0]
+                sig = [e for e in f if e.header.get('IMATYPE', None) == "SIGNIFICANCE"][0]
+                var = [e for e in f if e.header.get('IMATYPE', None) == "VARIANCE"][0]
+                expo = [e for e in f if e.header.get('IMATYPE', None) == "EXPOSURE"][0]
+
+                wcs = WCS(sig.header)
+                try:
+                    center_i, center_j = wcs.world_to_pixel(SkyCoord(crab_ra, crab_dec, unit="deg"))
+                except Exception as e:
+                    print(f"Coordinate transform failed: {e}")
+                    continue
+
+                detection_span = 20
+                di, dj = int(center_i), int(center_j)
+                frac_shift_i = center_i - di
+                frac_shift_j = center_j - dj
+
+                f_patch = flu.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
+                v_patch = var.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
+                ex_patch = expo.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
+
+                if f_patch.shape != (2 * detection_span, 2 * detection_span):
+                    print(f"Skipping {scw} due to crop shape: {f_patch.shape}")
+                    continue
+
+                # Apply sub-pixel shifts
+                f_patch = shift(f_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
+                v_patch = shift(v_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
+                ex_patch = shift(ex_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
+
+                if s_var is None:
+                    s_var = v_patch.copy()
+                    s_flu = f_patch.copy()
+                    s_expo = ex_patch.copy()
+                else:
+                    m = ~np.isnan(v_patch)
+                    m &= v_patch > 0
+
+                    s_flu[m] = (f_patch[m]/v_patch[m] + s_flu[m]/s_var[m]) / (1/v_patch[m] + 1/s_var[m])
+                    s_var[m] = 1 / (1/v_patch[m] + 1/s_var[m])
+                    s_expo[m] += ex_patch[m]
+                    total_max_isgri_exp += np.nanmax(expo.data)
+
+                body_lim[scw] = dict(
+                    ic=np.nanmean(np.sqrt(v_patch)), 
+                    ic_std=np.nanstd(f_patch),
+                )
+
+            except Exception as e:
+                print(f"Failed to process {scw_id}: {e}")
+                continue
+    return s_flu, s_var, s_expo

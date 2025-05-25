@@ -10,8 +10,12 @@ from datetime import timedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from scipy.stats import binom
+import csv
+from astroquery.jplhorizons import Horizons
+from astropy.time import Time
+from astropy import units as u
 
-## Error bar plotting
+## General plotting functions
 
 def plot_errorbar(date, y, var, xlabel=r"Observation Date", ylabel=r"Count Rate [counts/s]", color='k'):
 
@@ -492,3 +496,235 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             # plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
             plt.tight_layout()
     return unique_dates, ph_flux, erg_flux, ph_flux_err, erg_flux_err
+
+## Plot upper limits on spectrum
+
+def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")]):
+
+    curves = {}
+    current_label = None
+    x_vals = []
+    y_vals = []
+
+    label_map = {
+        "Curve1": "XMM Observation",
+        "Curve2": "NuSTAR Observation",
+        "Curve3": "Simulated Spectrum",
+        "Curve4": "Thermal Model",
+        "Curve5": "Ulysses Upper Limit",
+    }
+
+    XMM_x_errors = [0.3, 0.45, 0.65, 0.5, 0.8, 0.1, 0.25, 0.43, 3.3]
+    XMM_y_errors = [4.2e-7, 3e-7, 2.4e-7, 2.8e-7, 2.2e-7, 6.6e-7, 3.8e-7, 3.1e-7, 1.6e-7]
+
+    NuSTAR_x_errors = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.7, 0.7, 0.7, 0.9, 1.0, 1.2, 1.2, 1.3, 1.5, 1.7, 1.7]
+    NuSTAR_y_errors = [5.2e-7, 3.1e-7, 3.1e-7, 2.4e-7, 2.3e-7, 1.8e-7, 1.5e-7, 1.5e-7, 1.3e-7, 1.2e-7, 1.1e-7, 1.1e-7, 1.2e-7, 1e-7, 1.1e-7, 1.1e-7, 1e-7, 1e-7, 1e-7, 1e-7] # +- 0.01e-7
+
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue  
+            if line.lower().startswith('x'):
+                if current_label and x_vals:
+                    curves[current_label] = (np.array(x_vals), np.array(y_vals))
+                
+                parts = line.split(',')
+                current_label = parts[1].strip()
+                x_vals = []
+                y_vals = []
+            else:
+                try:
+                    x, y = map(float, line.split(','))
+                    x_vals.append(x)
+                    y_vals.append(y)
+                except ValueError:
+                    continue  
+
+    if current_label and x_vals:
+        curves[current_label] = (np.array(x_vals), np.array(y_vals))
+
+
+    step_like_curves = ["Curve3", "Curve4"]
+    tolerance = 1e-4  # tolerance for detecting duplicate x-values
+
+    def make_step_curve(x, y, tol=1e-3):
+        x = np.array(x)
+        y = np.array(y)
+
+        x_out = [x[0]]
+        y_out = [y[0]]
+
+        for i in range(1, len(x)):
+            # If x[i] is close to x[i-1], then it marks a vertical edge
+            if np.abs(x[i] - x[i - 1]) < tol:
+                # duplicate the previous Y to create a flat segment
+                y_out.append(y[i])
+                x_out.append(x[i])
+            else:
+                # regular horizontal step
+                y_out.append(y[i])
+                x_out.append(x[i])
+        return np.array(x_out), np.array(y_out)
+
+    # Data given by Gabriel 
+    ulysses = 6.73e-8
+    ulysses_band = np.array([27, 48])
+
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+
+    colors = plt.cm.Dark2.colors
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    for idx, (label, (x, y)) in enumerate(curves.items()):
+        new_label = label_map.get(label, label)
+        if new_label == "XMM Observation":
+            plt.errorbar(x, y, xerr=np.array(XMM_x_errors)/2, yerr=np.array(XMM_y_errors)/2,
+                    fmt='o', markersize=5, color='limegreen', ecolor='black', label=new_label,
+                    elinewidth=0.8, capsize=0, linestyle='None')
+        elif new_label == "NuSTAR Observation":
+            plt.errorbar(x, y, xerr=np.array(NuSTAR_x_errors)/2, yerr=np.array(NuSTAR_y_errors)/2,
+                    fmt='s', markersize=5, color='royalblue', ecolor='black', label=new_label,
+                    elinewidth=0.8, capsize=0, linestyle='None')
+        elif label in step_like_curves:
+            x_step, y_step = make_step_curve(x, y, tol=tolerance)
+            if label == "Curve3":
+                plt.step(x_step, y_step, where='post', label=new_label, color='tomato')
+            elif label == "Curve4":
+                plt.step(x_step, y_step, where='post', label=new_label, color='violet')
+        else:
+            # plt.plot(x, y, label=new_label, color='k', marker='|', markersize=8, markeredgewidth=2)
+            plt.plot(ulysses_band, [ulysses, ulysses], label=new_label, color='k', marker='|', markersize=8, markeredgewidth=2)
+
+    #for upper_limit in upper_limits:
+    for x_range, y_value, label in upper_limits:
+        plt.plot(x_range, [y_value, y_value], color='black', linestyle='--', label=label, marker='|', markersize=8, markeredgewidth=2)
+
+    plt.xlabel(r"Energy [keV]", fontsize=14)
+    plt.ylabel(r"Flux [photons/cm²/s/keV]", fontsize=14)
+
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlim(3, 60)
+    plt.ylim(3e-8, 2e-5)#1.2e-6)
+
+    plt.xticks([3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50], [r'3', r'4', r'5', r'6', r'7', r'8', r'9', r'10', r'20', r'30', r'50'], fontsize=14)
+    plt.yticks([1e-7, 1e-6], [r'$10^{-7}$', r'$10^{-6}$'], fontsize=14)
+
+    plt.tick_params(which='both', labelsize=14, direction="in")
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+
+    plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+
+def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")]):
+    jupiter = Horizons(id='599', location='@0',epochs=Time('2015-02-20', format='isot').mjd)
+    eph = jupiter.ephemerides()
+    D = eph['delta']
+    D = D[0]
+    D *= u.AU
+    D = D.to(u.cm)
+
+    # In their paper, they used distance to Jupiter when NuSTAR was observing
+    D = 7.24e13 * u.cm
+
+    # Convert W to photons/cm²/s (Ulysses article data)
+    E = 37.5 * u.keV
+    P = [1.1e8, 1.9e8, 5.6e8] * u.watt
+    J = E.to(u.joule)
+    F = P / (4 * np.pi * D**2) / J
+    F = F.to(u.cm**(-2) * u.s**(-1))
+    bandwidth = 21 * u.keV
+    F = F / bandwidth
+
+    # Convert our upper limits to W
+    epochs = [Time(str(year)+'-01-01', format='isot').mjd for year in range(2003, 2025)]
+    jupiter = Horizons(id='599', location='@0',epochs=epochs)
+    eph = jupiter.ephemerides()
+    D = eph['delta']
+    D = np.mean(D)
+    D *= u.AU
+    D = D.to(u.cm) # D is average distance to Jupiter over the period of observations
+
+    E = (15+30) / 2 * u.keV
+    E = E.to(u.erg)
+    limit = u.Quantity([upper_limit[1] * u.cm**(-2) * u.s**(-1) for upper_limit in upper_limits]) # photons/cm²/s (this value is 3 * weighted average error and max flux)
+    S = E * limit
+    L = S * 4 * np.pi * D**2
+    P = L.to(u.watt)
+
+    # Plotting the upper limits
+    curves = {}
+    current_label = None
+    x_vals = []
+    y_vals = []
+
+    label_map = {
+        "Curve1": "Einstein, ROSAT",
+        "Curve2": "Voyager",
+        "Curve3": "Balloon",
+        "Curve4": "Ulysses",
+    }
+
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue  
+            if line.lower().startswith('x'):
+                if current_label and x_vals:
+                    curves[current_label] = (np.array(x_vals), np.array(y_vals))
+                
+                parts = line.split(',')
+                current_label = parts[1].strip()
+                x_vals = []
+                y_vals = []
+            else:
+                try:
+                    x, y = map(float, line.split(','))
+                    x_vals.append(x)
+                    y_vals.append(y)
+                except ValueError:
+                    continue  
+
+    if current_label and x_vals:
+        curves[current_label] = (np.array(x_vals), np.array(y_vals))
+
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+
+    colors = plt.cm.Dark2.colors
+
+    # Plotting
+    plt.figure(figsize=(8, 6))
+    for idx, (label, (x, y)) in enumerate(curves.items()):
+        new_label = label_map.get(label, label)
+        plt.plot(x, y, label=new_label, color=colors[idx], marker='|', markersize=8, markeredgewidth=2)
+
+    for i, (x_range, y_value, label) in enumerate(upper_limits):
+        y_value = P[i].value
+        plt.plot(x_range, [y_value, y_value], color=colors[idx+i], linestyle='--', label=label, marker='|', markersize=8, markeredgewidth=2)
+
+    plt.xlabel(r"Energy [keV]", fontsize=14)
+    plt.ylabel(r"X-Ray Power at Jupiter [W]", fontsize=14)
+
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlim(0.1, 60)
+    plt.ylim(4e7, 4e12)
+
+    plt.xticks([0.1, 1, 10], [r'0.1', r'1', r'10'], fontsize=14)
+    plt.yticks([1e8, 1e9, 1e10, 1e11, 1e12], [r'$10^{8}$', r'$10^{9}$', r'$10^{10}$', r'$10^{11}$', r'$10^{12}$'], fontsize=14)
+
+    plt.tick_params(which='both', labelsize=14, direction="in")
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+
+    plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
