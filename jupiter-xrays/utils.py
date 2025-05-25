@@ -1,3 +1,5 @@
+## Import necessary libraries and modules
+
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -17,10 +19,14 @@ from astroquery.jplhorizons import Horizons
 import requests
 from astropy.io import ascii
 import warnings
+import oda_api.token 
+import logging
+from oda_api.api import DispatcherAPI
+from oda_api.plot_tools import OdaImage, OdaLightCurve, OdaSpectrum
 
-warnings.simplefilter('ignore', FITSFixedWarning)
+warnings.simplefilter('ignore', FITSFixedWarning) # Ignore FITSFixedWarning for WCS
 
-## Define global functions
+## Define global utility functions
 
 def simple_weighted_average(values, errors):
     weights = 1 / np.array(errors)**2
@@ -37,28 +43,10 @@ def Gaussian2D(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
     c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
     g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
-    
     return g.ravel()
 
 
 def weighted_avg(obs_times, count_rates, variances):
-    """
-    Calculate the weighted average of count rates and their standard deviation.
-
-    Parameters:
-        obs_times : list
-            List of observation times.
-        count_rates : list
-            List of count rates.
-        variances : list
-            List of variances.
-    Returns:
-        total_result : dict
-            Dictionary containing the total weighted mean and standard deviation.
-        yearly_results : dict
-            Dictionary containing the yearly weighted means and standard deviations.    
-    """
-
     count_rates = np.array(count_rates)
     variances = np.array(variances)
     obs_times = np.array(obs_times)
@@ -104,46 +92,14 @@ def weighted_avg(obs_times, count_rates, variances):
             "weighted_std": yearly_weighted_std,
             "year": year
         }
-    
+
+    # Sort the yearly results by year
+    yearly_results = dict(sorted(yearly_results.items(), key=lambda item: item[0]))
+
     return total_result, yearly_results
 
 
 def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_stds, crab_years, instrument="ISGRI", energy_range=(15, 30)):
-    """
-    Convert count rates to fluxes using the Crab data, yearly-based on observation times.
-    The Crab yearly weighted means and standard deviations are provided as inputs.
-
-    Parameters:
-        countrates : list
-            List of count rates.
-        variances : list
-            List of variances.
-        obs_times : list
-            List of observation times (either datetime objects or strings).
-        crab_yearly_means : list
-            List of yearly weighted means of the Crab.
-        crab_yearly_stds : list
-            List of yearly weighted standard deviations of the Crab.
-        crab_years : list
-            List of years corresponding to the yearly means and standard deviations.
-        instrument : str
-            Instrument name (ISGRI or JEM-X).
-        energy_range : tuple
-            Energy range for conversion (default is (15, 30)).
-
-    Returns:
-        photon_fluxes : np.ndarray
-            Array of fluxes in photons/cm2/s.
-        photon_fluxes_std : np.ndarray
-            Array of fluxes standard deviations in photons/cm2/s.
-        erg_fluxes : np.ndarray
-            Array of fluxes in erg/cm2/s.
-        erg_fluxes_std : np.ndarray
-            Array of fluxes standard deviations in erg/cm2/s.
-        new_obs_times : np.ndarray
-            Array of observation times after filtering.
-    """
-    
     if isinstance(obs_times[0], str):
         try:
             obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
@@ -177,10 +133,7 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
 
     for date, count_rate, var in zip(obs_times, countrates, variances):
         year = date.year
-        # there are 23 years of crab data starting from 2003 and ending in 2025
-        # so the index 0 corresponds to 2003, and the index 22 corresponds to 2025, etc.
-        # check date, and for each one assign an index, then get the corresponding yearly mean and std
-        # if the year is not in the crab_years, skip it
+        
         if crab_yearly_means is None or crab_yearly_stds is None:
             continue
         if int(year) not in crab_years:
@@ -195,14 +148,12 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
 
         yearly_conversion_factor = ph_flux_num / mean
         yearly_conversion_factor_erg = ph_flux_num_erg / mean
-        # yearly_conversion_factor_std = ph_flux_num / std
-        # yearly_conversion_factor_erg_std = ph_flux_num_erg / std
+
 
         photon_fluxes = np.append(photon_fluxes, yearly_conversion_factor * count_rate)
         photon_fluxes_std = np.append(photon_fluxes_std, yearly_conversion_factor * np.sqrt(var)) # main error source is jupiter error, not crab error
         erg_fluxes = np.append(erg_fluxes, yearly_conversion_factor_erg * count_rate)
         erg_fluxes_std = np.append(erg_fluxes_std, yearly_conversion_factor_erg * np.sqrt(var))
-    
     return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
 
 
@@ -220,31 +171,6 @@ def get_integral_position(obs_date: str): # used in JupiterPos function
 
 
 def JupiterPos(fits_path: str, parallax: bool=True):
-    """
-    Get the position of Jupiter for given ScWs from FITS files, 
-    with the option of accounting for parallax (i.e. position of INTEGRAL).
-
-    Parameters:
-        fits_path : str
-            Path to the directory containing the FITS files.
-        parallax : bool
-            If True, calculate the position of Jupiter considering parallax due to the position of INTEGRAL.
-    
-    Returns:
-        scws : list
-            List of SCW names.
-        scw_dates : list
-            List of observation dates.
-        scw_ra : list
-            List of RA coordinates.
-        scw_dec : list
-            List of Dec coordinates.
-        scw_jra : list
-            List of Jupiter RA coordinates.
-        scw_jdec : list
-            List of Jupiter Dec coordinates.
-    """
-    
     fits_files = np.sort(os.listdir(fits_path)) 
     scws = [f[:12] for f in fits_files]
 
@@ -292,7 +218,6 @@ def JupiterPos(fits_path: str, parallax: bool=True):
 
             scw_jra = np.append(scw_jra, jra)
             scw_jdec = np.append(scw_jdec, jdec)
-
     return scws, scw_dates, scw_ra, scw_dec, scw_jra, scw_jdec
 
 ## This script is used to load the Crab data from the FITS files and extract the relevant information.
@@ -300,40 +225,7 @@ def JupiterPos(fits_path: str, parallax: bool=True):
 crab_coordinates = SkyCoord.from_name("Crab")
 crab_ra, crab_dec = crab_coordinates.ra.deg, crab_coordinates.dec.deg
 
-
 def loadCrabIMG(path: str):
-    """
-    Load Crab images from FITS files and extract relevant data.
-    Parameters:
-        path : str
-            Path to the directory containing the FITS files.
-    Returns:
-        cr1 : np.ndarray
-            Count rates.
-        vr1 : np.ndarray
-            Variances.
-        sg1 : np.ndarray
-            Significances.
-        xp1 : np.ndarray
-            Exposures.
-        acr1 : np.ndarray
-            Annular count rates.
-        avr1 : np.ndarray
-            Annular variances.
-        cr1_cpsf : np.ndarray
-            Count rates from the constrained Gaussian PSF fit.
-        cr1_psf : np.ndarray
-            Count rates from the Gaussian PSF fit.
-        err1_cpsf : np.ndarray
-            Errors from the constrained Gaussian PSF fit.
-        err1_psf : np.ndarray
-            Errors from the Gaussian PSF fit.
-        date1 : np.ndarray
-            Dates of observations.
-        offset1 : np.ndarray
-            Offsets of Crab from the pointing coordinates.
-    """
-    
     cr1 = np.array([])
     vr1 = np.array([])
     sg1 = np.array([])
@@ -448,25 +340,10 @@ def loadCrabIMG(path: str):
         except Exception as e:
             print(f"Error processing file {img}: {e}")
             continue
-
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
 
 def loadCrabLC(path: str):
-    """
-    Load Crab light curves from FITS files and extract relevant data.
-    Parameters:
-        path : str
-            Path to the directory containing the FITS files.
-    Returns:
-        cr : np.ndarray
-            Count rates.
-        err : np.ndarray
-            Errors.
-        date : np.ndarray
-            Dates of observations.
-    """
-    
     cr = np.array([])
     err = np.array([])
     date = np.array([])
@@ -486,46 +363,11 @@ def loadCrabLC(path: str):
         date = np.append(date, time)
         cr = np.append(cr, rate)
         err = np.append(err, rate_err)
-
     return cr, err, date
 
 ## Below are the same type of functions, but for Jupiter's data
 
-def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
-    """
-    Load Jupiter images from FITS files and extract relevant data.
-    Parameters:
-        path : str
-            Path to the directory containing the FITS files.
-        scw_path : str
-            Path to the file containing the Jupiter table.
-    Returns:
-        cr1 : np.ndarray
-            Count rates.
-        vr1 : np.ndarray
-            Variances.
-        sg1 : np.ndarray
-            Significances.
-        xp1 : np.ndarray
-            Exposures.
-        acr1 : np.ndarray
-            Annular count rates.
-        avr1 : np.ndarray
-            Annular variances.
-        cr1_cpsf : np.ndarray
-            Count rates from the constrained Gaussian PSF fit.
-        cr1_psf : np.ndarray
-            Count rates from the Gaussian PSF fit.
-        err1_cpsf : np.ndarray
-            Errors from the constrained Gaussian PSF fit.
-        err1_psf : np.ndarray
-            Errors from the Gaussian PSF fit.
-        date1 : np.ndarray
-            Dates of observations.
-        offset1 : np.ndarray
-            Offsets of Jupiter from the pointing coordinates.
-    """
-
+def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False, fitting=False):
     cr1 = np.array([])
     vr1 = np.array([])
     sg1 = np.array([])
@@ -571,13 +413,8 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
                 print(f"Warning: Empty data in file {img}. Skipping this file.")
                 continue
 
-            # Find closest Jupiter position in time
-            # closest_idx = np.argmin(np.abs([jdates[i] - date_obs for i in range(len(jdates))]))
-            # current_ra = jupiter_ra[closest_idx]
-            # current_dec = jupiter_dec[closest_idx]
-
             filename = img
-            scw_id = filename[:16]
+            scw_id = filename[:len(jupiter_scw[0])]
             match_idx = jupiter_scw.index(scw_id)
             current_ra = jupiter_ra[match_idx]
             current_dec = jupiter_dec[match_idx]
@@ -601,17 +438,19 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
             sg = significances[y_int, x_int]
             xp = exposures[y_int, x_int]
 
-            X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
-            x_grid, y_grid = np.meshgrid(X, Y)
+            if fitting:
 
-            xy = (x_grid.ravel(), y_grid.ravel())
-            z = intensities.ravel()
+                X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
+                x_grid, y_grid = np.meshgrid(X, Y)
 
-            def Gaussian2D_fixed(xy, amplitude, xo, yo):
-                return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+                xy = (x_grid.ravel(), y_grid.ravel())
+                z = intensities.ravel()
 
-            popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
-            popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+                def Gaussian2D_fixed(xy, amplitude, xo, yo):
+                    return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+
+                popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
+                popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
 
             # Append the results
             offset1 = np.append(offset1, pointing.separation(jupiter_coords).deg)
@@ -619,8 +458,8 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
             acr = np.array([])
             avr = np.array([])
 
-            for x in range(x_int - 40, x_int + 40):
-                for y in range(y_int - 40, y_int + 40):
+            for x in range(max(0, x_int - 40), min(intensities.shape[1], x_int + 40)):
+                for y in range(max(0, y_int - 40), min(intensities.shape[0], y_int + 40)):
                     if (x - x_int)**2 + (y - y_int)**2 < 20**2:
                         continue
                     acr = np.append(acr, intensities[y, x])
@@ -628,11 +467,17 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
 
             acr1 = np.append(acr1, np.mean(acr))
             avr1 = np.append(avr1, np.mean(avr))
-            
-            cr1_cpsf = np.append(cr1_cpsf, popt[0])
-            cr1_psf = np.append(cr1_psf, popt2[0])
-            err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
-            err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+
+            if fitting:
+                cr1_cpsf = np.append(cr1_cpsf, popt[0])
+                cr1_psf = np.append(cr1_psf, popt2[0])
+                err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
+                err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+            else:
+                cr1_cpsf = np.append(cr1_cpsf, np.nan)
+                cr1_psf = np.append(cr1_psf, np.nan)
+                err1_cpsf = np.append(err1_cpsf, np.nan)
+                err1_psf = np.append(err1_psf, np.nan)
 
             cr1 = np.append(cr1, cr)
             vr1 = np.append(vr1, vr)
@@ -642,33 +487,18 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False):
             # Dates
             if jemx == True:  
                 mjd = jdates[match_idx]
-                isot = Time(mjd, format="mjd").isot
-                date1 = np.append(date1, isot)
+                isot = Time(mjd, format="mjd")
+                date1 = np.append(date1, isot.isot)
             else:
                 date1 = np.append(date1, header["DATE-OBS"])
 
         except Exception as e:
             print(f"Error processing file {img}: {e}") 
             continue
-
     return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
 
 
 def loadJupiterLC(path="../data/Jupiter/15-30keV/Lightcurves"):
-    """
-    Load Jupiter light curves from FITS files and extract relevant data.
-    Parameters:
-        path : str
-            Path to the directory containing the FITS files.
-    Returns:
-        cr : np.ndarray
-            Count rates.
-        err : np.ndarray
-            Errors.
-        date : np.ndarray
-            Dates of observations.
-    """
-    
     cr = np.array([])
     err = np.array([])
     date = np.array([])
@@ -689,18 +519,11 @@ def loadJupiterLC(path="../data/Jupiter/15-30keV/Lightcurves"):
         date = np.append(date, time)
         cr = np.append(cr, rate)
         err = np.append(err, rate_err)
-
     return cr, err, date
 
 ## Functions to query data given a set of ScWs and energy ranges
 
-import oda_api.token 
-import logging
-from oda_api.api import DispatcherAPI
-from oda_api.plot_tools import OdaImage, OdaLightCurve, OdaSpectrum
-
 def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri", save_path: str="../data/", save: bool=False):
-
     logging.getLogger().setLevel(logging.WARNING)
     logging.getLogger('oda_api').addHandler(logging.StreamHandler())
 
@@ -773,5 +596,4 @@ def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri"
         for i, data in enumerate(new_results):
             im = OdaImage(data)
             im.write_fits(os.path.join(save_path, f"{new_scws[i]}"))
-
     return new_results, new_scws
