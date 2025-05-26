@@ -14,6 +14,7 @@ import csv
 from astroquery.jplhorizons import Horizons
 from astropy.time import Time
 from astropy import units as u
+from scipy.interpolate import interp1d
 
 ## General plotting functions
 
@@ -31,7 +32,7 @@ def plot_errorbar(date, y, var, xlabel=r"Observation Date", ylabel=r"Count Rate 
 
     plt.axhline(
         avg, color=color, linestyle='--', 
-        label=rf'Average: {avg:.2e} $\pm$ {std:.2e} [counts/s]'
+        label=rf'Average: {avg:.2e} $\pm$ {std:.2e}'
     )
 
     plt.xlabel(xlabel, fontsize=14)
@@ -48,11 +49,15 @@ def plot_errorbar(date, y, var, xlabel=r"Observation Date", ylabel=r"Count Rate 
 
 
 def plot_countrate(date, cr, var, color='k'):
-    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Count Rate [counts/s]", color='k')
+    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Count Rate [counts/s]", color=color)
     
 
 def plot_flux(date, cr, var, color='k'):
-    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Flux [photons cm$^{-2}$ s$^{-1}$]", color='k')
+    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Flux [photons cm$^{-2}$ s$^{-1}$]", color=color)
+
+
+def plot_offset(date, offset, color='k'):
+    plot_errorbar(date, offset, np.zeros(len(offset)), xlabel=r"Observation Date", ylabel=r"Offset [$^\circ$]", color=color)
 
 
 def plot_scw_distribution(date1, date2, date3):
@@ -359,7 +364,7 @@ def plot_data_by_month(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_psf, e
     return data_dict
 
 
-def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1_date: datetime, color='royalblue', plot=True, dual_plot=True):
+def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1_date: datetime, flux1_end: datetime, color='royalblue', plot=True, dual_plot='energy'):
     years = []
     months = []
 
@@ -379,27 +384,37 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             'ph_flux': [],
             'erg_flux': [],
             'ph_flux_err': [],
-            'erg_flux_err': []
+            'erg_flux_err': [],
+            'durations': []  # Store durations in seconds
         }
-    
+
+    # Fill the dictionary with values and durations
     for i in range(len(ph_flux1)):
         y, m = years[i], months[i]
-
+        duration = (flux1_end[i] - flux1_date[i]).total_seconds()  # in seconds
         data_dict[(y, m)]['ph_flux'].append(ph_flux1[i])
         data_dict[(y, m)]['erg_flux'].append(erg_flux1[i])
         data_dict[(y, m)]['ph_flux_err'].append(ph_flux1_err[i])
         data_dict[(y, m)]['erg_flux_err'].append(erg_flux1_err[i])
+        data_dict[(y, m)]['durations'].append(duration)
 
-    # Calculate the weighted average for each month
+    # Compute weighted averages and total durations
     ph_flux = []
     erg_flux = []
     ph_flux_err = []
     erg_flux_err = []
+    monthly_durations = []  # in seconds
+
     for y, m in unique_year_months:
-        ph_flux.append(simple_weighted_average(data_dict[(y, m)]['ph_flux'], data_dict[(y, m)]['ph_flux_err'])[0])
-        erg_flux.append(simple_weighted_average(data_dict[(y, m)]['erg_flux'], data_dict[(y, m)]['erg_flux_err'])[0])
-        ph_flux_err.append(simple_weighted_average(data_dict[(y, m)]['ph_flux'], data_dict[(y, m)]['ph_flux_err'])[1])
-        erg_flux_err.append(simple_weighted_average(data_dict[(y, m)]['erg_flux'], data_dict[(y, m)]['erg_flux_err'])[1])
+        ph_avg, ph_err = simple_weighted_average(data_dict[(y, m)]['ph_flux'], data_dict[(y, m)]['ph_flux_err'])
+        erg_avg, erg_err = simple_weighted_average(data_dict[(y, m)]['erg_flux'], data_dict[(y, m)]['erg_flux_err'])
+        total_duration = sum(data_dict[(y, m)]['durations'])
+
+        ph_flux.append(ph_avg)
+        erg_flux.append(erg_avg)
+        ph_flux_err.append(ph_err)
+        erg_flux_err.append(erg_err)
+        monthly_durations.append(total_duration)
 
 
     unique_dates = []
@@ -418,6 +433,9 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
     ph_flux_err_dict = dict(zip(unique_year_months, ph_flux_err))
     erg_flux_dict = dict(zip(unique_year_months, erg_flux))
     erg_flux_err_dict = dict(zip(unique_year_months, erg_flux_err))
+
+    monthly_duration_dict = dict(zip(unique_year_months, monthly_durations))
+    monthly_durations_filled = [monthly_duration_dict.get((d.year, d.month), np.nan) for d in full_range]
 
     # Step 3: Fill values with NaNs where no data
     ph_flux_filled = []
@@ -441,7 +459,7 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
 
     if plot:
 
-        if dual_plot:
+        if dual_plot=='energy':
             fig, ax1 = plt.subplots(figsize=(10, 6))
 
             # First y-axis (left) for photon flux
@@ -466,7 +484,107 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             ax2.yaxis.set_ticks_position('both')
 
             fig.tight_layout()
-    
+        elif dual_plot=='exposure':
+            bars = False
+            if bars:
+                fig, ax1 = plt.subplots(figsize=(10, 6))
+
+                # --- First y-axis (left): Photon Flux ---
+                ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='o', capsize=0,
+                            markerfacecolor=color, markeredgecolor='k', ecolor='k', label='Photon Flux')
+                ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
+                ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+                ax1.tick_params(axis='y', labelcolor='k')
+                ax1.tick_params(which='both', labelsize=14, direction='in')
+                ax1.xaxis.set_ticks_position('both')
+                ax1.yaxis.set_ticks_position('both')
+                ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
+                plt.xticks(rotation=45, fontsize=14)
+
+                # --- Second y-axis (right): Duration ---
+                ax2 = ax1.twinx()
+
+                durations_ks = [m / 1000.0 for m in monthly_durations_filled]  # Convert seconds to kiloseconds
+                
+                ax2.bar(unique_dates, durations_ks, width=50, alpha=0.3, color='darkgreen', label='Duration')
+                #ax2.plot(unique_dates, durations_ks, 's-', color='darkgreen', label='Total Duration', linewidth=2, markersize=5)
+                ax2.set_ylabel(r'Total Duration [ks]', fontsize=14, color='darkgreen')
+                ax2.tick_params(axis='y', labelcolor='darkgreen')
+                ax2.tick_params(which='both', labelsize=14, direction='in')
+                ax2.yaxis.set_ticks_position('both')
+
+                fig.tight_layout()
+            else:
+                fig, ax1 = plt.subplots(figsize=(10, 6))
+
+                durations_ks = [m / 1000.0 for m in monthly_durations_filled]
+
+                # --- Scatter plot with color encoding for durations ---
+                sc = ax1.scatter(unique_dates, ph_flux, c=durations_ks, cmap='viridis',
+                                edgecolor='k', s=40, label='Photon Flux')
+
+                # Add error bars (plotted separately to avoid color distortion)
+                ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='none',
+                            ecolor='k', capsize=0, zorder=0)
+
+                ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
+                ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14)
+                ax1.tick_params(axis='y', labelcolor='k')
+                ax1.tick_params(which='both', labelsize=14, direction='in')
+                ax1.xaxis.set_ticks_position('both')
+                ax1.yaxis.set_ticks_position('both')
+                ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
+                plt.xticks(rotation=45, fontsize=14)
+
+                # Add colorbar for durations
+                cbar = fig.colorbar(sc, ax=ax1, pad=0.02)
+                cbar.set_label(r'Exposure Duration [ks]', fontsize=14)
+                cbar.ax.tick_params(labelsize=14)
+
+                fig.tight_layout()
+
+        import matplotlib.gridspec as gridspec
+        if dual_plot == 'all':
+            fig = plt.figure(figsize=(10, 6))
+            gs = gridspec.GridSpec(1, 2, width_ratios=[20, 1])  # [main plot, colorbar]
+
+            ax1 = fig.add_subplot(gs[0])
+            ax2 = ax1.twinx()
+
+            # --- Convert durations to ks ---
+            durations_ks = [m / 1000.0 for m in monthly_durations_filled]
+
+            # --- Photon flux with color-coded exposure ---
+            sc = ax1.scatter(unique_dates, ph_flux, c=durations_ks, cmap='viridis',
+                            edgecolor='k', s=40, label='Photon Flux')
+            ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='none',
+                        ecolor='k', capsize=0, zorder=0)
+
+            ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
+            ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+            ax1.tick_params(axis='y', labelcolor='k')
+            ax1.tick_params(which='both', labelsize=14, direction='in')
+            ax1.xaxis.set_ticks_position('both')
+            ax1.yaxis.set_ticks_position('both')
+            ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
+            plt.setp(ax1.get_xticklabels(), rotation=45)
+
+            # --- Erg flux ---
+            ax2.errorbar(unique_dates, erg_flux, yerr=erg_flux_err, fmt='s', capsize=0,
+                        markerfacecolor='orangered', markeredgecolor='k', ecolor='k',
+                        label='Erg Flux', alpha=0.0)
+            ax2.set_ylabel(r'Erg Flux [erg cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+            ax2.tick_params(axis='y', labelcolor='k')
+            ax2.tick_params(which='both', labelsize=14, direction='in')
+            ax2.yaxis.set_ticks_position('both')
+
+            # --- Colorbar ---
+            cax = fig.add_subplot(gs[1])
+            cbar = fig.colorbar(sc, cax=cax)
+            cbar.set_label(r'Exposure Duration [ks]', fontsize=14)
+            cbar.ax.tick_params(labelsize=14)
+
+            fig.tight_layout()
         else:
             plt.figure(figsize=(10, 6))
             plt.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='o', capsize=0, markerfacecolor=color, markeredgecolor='k', ecolor='k')
@@ -728,3 +846,80 @@ def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv
     plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
+
+
+def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv"):
+    curves = {}
+    current_label = None
+    x_vals = []
+    y_vals = []
+
+    label_map = {
+        "Curve1": "ISGRI Sensitivity",
+    }
+
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue  
+            if line.lower().startswith('x'):
+                if current_label and x_vals:
+                    curves[current_label] = (np.array(x_vals), np.array(y_vals))
+                
+                parts = line.split(',')
+                current_label = parts[1].strip()
+                x_vals = []
+                y_vals = []
+            else:
+                try:
+                    x, y = map(float, line.split(','))
+                    x_vals.append(x)
+                    y_vals.append(y)
+                except ValueError:
+                    continue  
+
+    if current_label and x_vals:
+        curves[current_label] = (np.array(x_vals), np.array(y_vals))
+
+
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+    colors = plt.cm.Dark2.colors
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    for idx, (label, (x, y)) in enumerate(curves.items()):
+        new_label = label_map.get(label, label)
+        if new_label == "ISGRI Sensitivity":
+            plt.scatter(x, y, label=new_label, color='k', marker='.', s=40)
+
+    for label, (x, y) in curves.items():
+        interp_func = interp1d(x, y, kind='cubic', bounds_error=False, fill_value="extrapolate")
+        
+        x_fine = np.logspace(np.log10(x.min()), np.log10(x.max()), 1000)
+        y_fine = interp_func(x_fine)
+        
+        plt.plot(x_fine, y_fine, '-', label='Interpolated Curve', color='k', alpha=0.5)
+        break  
+
+    plt.xlabel(r"Energy [keV]", fontsize=14)
+    plt.ylabel(r"Continuum Sensitivity [photons/cm²/s/keV]", fontsize=14)
+
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlim(10, 1100)
+    plt.ylim(2e-6, 2e-4)
+
+    plt.xticks([20, 50, 100, 200, 500, 1000], [r'20', r'50', r'100', r'200', r'500', r'1000'], fontsize=14)
+    plt.yticks([1e-5, 1e-4], [r'$10^{-5}$', r'$10^{-4}$'], fontsize=14)
+
+    plt.tick_params(which='both', labelsize=14, direction="in")
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+
+    plt.legend(fontsize=14, loc='upper right', fancybox=False, framealpha=1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    return interp_func

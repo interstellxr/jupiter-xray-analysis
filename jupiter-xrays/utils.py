@@ -100,39 +100,45 @@ def weighted_avg(obs_times, count_rates, variances):
     return total_result, yearly_results
 
 
-def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_stds, crab_years, instrument="ISGRI", energy_range=(15, 30)):
+def cr2flux(countrates, variances, obs_times, end_times, crab_yearly_means, crab_yearly_stds, crab_years, instrument="ISGRI", energy_range=(15, 30)):
     if isinstance(obs_times[0], str):
         try:
             obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in obs_times])
+            end_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f") for date in end_times])
         except ValueError:
             obs_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S") for date in obs_times])
+            end_times = np.array([datetime.strptime(date, "%Y-%m-%dT%H:%M:%S") for date in end_times])
     else:
         obs_times = np.array(obs_times)
+        end_times = np.array(end_times)
 
     if instrument == "ISGRI":
         gamma = 2.13  # photon index of ISGRI 
         E0 = 100  # 100 keV reference energy
-        K = 6.5e-4  # flux (photons/cm2/s) @ 100 keV 
+        K = 6.2e-4  # flux (photons/cm2/s/keV) @ 100 keV 
     elif instrument == "JEM-X":
         gamma = 2.08  # photon index of JEM-X 2 (2.15 for JEM-X 1)
         E0 = 1  # 1 keV reference energy
-        K = 10.3  # flux (photons/cm2/s) @ 1 keV for JEM-X 2 (11.4 for JEM-X 1)
+        K = 10.3  # flux (photons/cm2/s/keV) @ 1 keV for JEM-X 2 (11.4 for JEM-X 1)
 
     E = np.linspace(energy_range[0], energy_range[1], 1000) 
 
     power_law = K * (E / E0) ** (-gamma)  # flux
     ph_flux_num = np.trapz(power_law, E)  # numeric
     ph_flux_num_erg = np.trapz(power_law * E * 1.60218e-9, E)  # numeric, energy units
+
+    ph_flux = K / (E0**(-gamma)) * 1 / (1-gamma) * (energy_range[1]**(1-gamma) - energy_range[0]**(1-gamma))  # analytical
     
     photon_fluxes = np.array([])
     photon_fluxes_std = np.array([])
     erg_fluxes = np.array([])
     erg_fluxes_std = np.array([])
     new_obs_times = np.array([])
+    new_end_times = np.array([])
 
     crab_years = np.array(crab_years, dtype=int)
 
-    for date, count_rate, var in zip(obs_times, countrates, variances):
+    for date, end, count_rate, var in zip(obs_times, end_times, countrates, variances):
         year = date.year
         
         if crab_yearly_means is None or crab_yearly_stds is None:
@@ -141,21 +147,21 @@ def cr2flux(countrates, variances, obs_times, crab_yearly_means, crab_yearly_std
             continue
 
         new_obs_times = np.append(new_obs_times, date)
+        new_end_times = np.append(new_end_times, end)
 
         index_array = np.argwhere(crab_years == year).flatten()
         index = index_array[0]
         mean = crab_yearly_means[index]
         std = crab_yearly_stds[index]
 
-        yearly_conversion_factor = ph_flux_num / mean
+        yearly_conversion_factor = ph_flux / mean
         yearly_conversion_factor_erg = ph_flux_num_erg / mean
-
 
         photon_fluxes = np.append(photon_fluxes, yearly_conversion_factor * count_rate)
         photon_fluxes_std = np.append(photon_fluxes_std, yearly_conversion_factor * np.sqrt(var)) # main error source is jupiter error, not crab error
         erg_fluxes = np.append(erg_fluxes, yearly_conversion_factor_erg * count_rate)
         erg_fluxes_std = np.append(erg_fluxes_std, yearly_conversion_factor_erg * np.sqrt(var))
-    return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times
+    return photon_fluxes, photon_fluxes_std, erg_fluxes, erg_fluxes_std, new_obs_times, new_end_times
 
 
 def get_integral_position(obs_date: str): # used in JupiterPos function
@@ -380,7 +386,9 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False, fitting=False):
     err1_cpsf = np.array([])
     err1_psf = np.array([])
     date1 = np.array([])
+    end1 = np.array([])
     offset1 = np.array([])
+    exp1 = np.array([])
 
     jupiter_table = ascii.read(scw_path)
 
@@ -391,6 +399,9 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False, fitting=False):
 
     jdates = jupiter_table['start_date'].data # MJD
     jdates = [Time(jd, format="mjd").mjd for jd in jdates]
+
+    jends = jupiter_table['end_date'].data
+    jends = [Time(jd, format="mjd").mjd for jd in jends]
 
     for img in os.listdir(path):
 
@@ -455,6 +466,7 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False, fitting=False):
 
             # Append the results
             offset1 = np.append(offset1, pointing.separation(jupiter_coords).deg)
+            exp1 = np.append(exp1, xp)
 
             acr = np.array([])
             avr = np.array([])
@@ -487,16 +499,18 @@ def loadJupiterIMG(path: str, scw_path: str, jemx: bool=False, fitting=False):
 
             # Dates
             if jemx == True:  
-                mjd = jdates[match_idx]
-                isot = Time(mjd, format="mjd")
-                date1 = np.append(date1, isot.isot)
+                mjdstart, mjdend = jdates[match_idx], jends[match_idx]
+                isotstart, isotend = Time(mjdstart, format="mjd"), Time(mjdend, format="mjd")
+                date1 = np.append(date1, isotstart.isot)
+                end1 = np.append(end1, isotend.isot)
             else:
                 date1 = np.append(date1, header["DATE-OBS"])
+                end1 = np.append(end1, header["DATE-END"])
 
         except Exception as e:
             print(f"Error processing file {img}: {e}") 
             continue
-    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
+    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, end1, offset1, exp1
 
 
 def loadJupiterLC(path="../data/Jupiter/15-30keV/Lightcurves"):
@@ -663,6 +677,8 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
                 flu = [e for e in f if e.header.get('IMATYPE', None) == "INTENSITY"][0]
                 date_obs = Time(flu.header['DATE-OBS']).datetime
             
+            date_end = date_obs # we dont need it here, but it is required for cr2flux function
+            
             sig = [e for e in f if e.header.get('IMATYPE', None) == "SIGNIFICANCE"][0]
             var = [e for e in f if e.header.get('IMATYPE', None) == "VARIANCE"][0]
             expo = [e for e in f if e.header.get('IMATYPE', None) == "EXPOSURE"][0]
@@ -706,10 +722,11 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
                     continue
 
                 if dir == "../data/Jupiter/15-30keV/Images":
-                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                    photon_fluxes, photon_fluxes_std, _, _, _, _ = cr2flux(
                         countrates=[cr],
                         variances=[var_pix],
                         obs_times=[date_obs],
+                        end_times=[date_end],
                         crab_yearly_means=crabCR_15_30,
                         crab_yearly_stds=crabERR_15_30,
                         crab_years=crabYEAR_15_30,
@@ -717,10 +734,11 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
                         energy_range=(15, 30)
                     )
                 elif dir == "../data/Jupiter/3-15keV/Images":
-                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                    photon_fluxes, photon_fluxes_std, _, _, _, _ = cr2flux(
                         countrates=[cr],
                         variances=[var_pix],
                         obs_times=[date_obs],
+                        end_times=[date_end],
                         crab_yearly_means=crabCR_3_15,
                         crab_yearly_stds=crabERR_3_15,
                         crab_years=crabYEAR_3_15,
@@ -728,10 +746,11 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
                         energy_range=(3, 15)
                     )
                 elif dir == "../data/Jupiter/30-60keV/Images":
-                    photon_fluxes, photon_fluxes_std, _, _, _ = cr2flux(
+                    photon_fluxes, photon_fluxes_std, _, _, _, _ = cr2flux(
                         countrates=[cr],
                         variances=[var_pix],
                         obs_times=[date_obs],
+                        end_times=[date_end],
                         crab_yearly_means=crabCR_30_60,
                         crab_yearly_stds=crabERR_30_60,
                         crab_years=crabYEAR_30_60,
@@ -890,3 +909,33 @@ def stack_crab(dir: str):
                 print(f"Failed to process {scw_id}: {e}")
                 continue
     return s_flu, s_var, s_expo
+
+
+## Calculate sensitivity for given energy ranges and observation times
+
+from scipy.integrate import quad
+
+def sensitivity(interp_func, E_ranges: list = [(15, 30), (30, 60), (3, 15)], observation_times: list = [1284044.976366043, 2314640.976366043, 297224.19699954987]):
+
+    integrated_results = []
+
+    for E_min, E_max in E_ranges:
+        integrated_sensitivity, error = quad(interp_func, E_min, E_max)
+        print(f"Integrated sensitivity from {E_min} to {E_max} keV for a 77 ks observation time: {integrated_sensitivity:.3e} +- {error:.3e} photons/cm²/s")
+        integrated_results.append((integrated_sensitivity, error))
+
+    print()
+
+    observation_times = [1284044.976366043, 2314640.976366043, 297224.19699954987] # s
+
+    sensitivity_upper_limits = []
+
+    for (integrated_sensitivity, error), observation_time in zip(integrated_results, observation_times):
+        observation_time_ks = observation_time / 1000  # convert to ks
+        scale = np.sqrt(77 / observation_time_ks)
+        scaled_sensitivity = integrated_sensitivity * scale
+        scaled_error = error * scale
+        print(f"Scaled sensitivity for {observation_time_ks:.0f} ks observation time: {scaled_sensitivity:.3e} +- {scaled_error:.3e} photons/cm²/s")
+        sensitivity_upper_limits.append(scaled_sensitivity)
+
+    return sensitivity_upper_limits
