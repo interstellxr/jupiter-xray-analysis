@@ -5,14 +5,11 @@ import matplotlib.pyplot as plt
 from astropy.time import Time
 import os
 from utils import *
-from astropy.time import Time
 from datetime import timedelta
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from scipy.stats import binom
 import csv
 from astroquery.jplhorizons import Horizons
-from astropy.time import Time
 from astropy import units as u
 from scipy.interpolate import interp1d
 
@@ -60,9 +57,9 @@ def plot_offset(date, offset, color='k'):
     plot_errorbar(date, offset, np.zeros(len(offset)), xlabel=r"Observation Date", ylabel=r"Offset [$^\circ$]", color=color)
 
 
-def plot_scw_distribution(date1, date2, date3):
-    nustar_dates = ["2015-01-30", "2017-05-16", "2017-06-18", "2017-07-10", "2018-04-01"]
-    date_end_dt = [Time(d, format='isot').datetime + timedelta(days=31) for d in nustar_dates]
+def plot_scw_distribution(date1, date2, date3, save=False):
+    nustar_dates = ["2015-01-30", "2017-05-16", "2018-04-01"] # "2017-06-18", "2017-07-10"
+    date_end_dt = [Time(d, format='isot').datetime + timedelta(days=31*6) for d in nustar_dates]
     nustar_dates = [Time(date).datetime for date in nustar_dates]
 
     date_start_num = mdates.date2num(nustar_dates)
@@ -80,19 +77,22 @@ def plot_scw_distribution(date1, date2, date3):
     date3_dt = [Time(d, format='isot').datetime for d in date3]
     date3_num = mdates.date2num(date3_dt)
 
-    bins = np.linspace(min(date3_num), max(date2_num), 50)
+    num_days = max(date2_num) - min(date2_num)
+    approx_months = int(num_days / (30.44*6)) # 3 months per bin
+    bins = np.linspace(min(date2_num), max(date2_num), approx_months + 1)
 
-    plt.figure(figsize=(10, 6))
+    # plt.figure(figsize=(8, 6))
+    # plt.hist([date3_num, date1_num, date2_num], bins=bins, stacked=True, color=['seagreen', 'darkorange', 'indianred'], alpha=0.7, label=[r'3 - 15 keV', r'15 - 30 keV', r'30 - 60 keV'])
 
-    plt.hist(
-        [date3_num, date1_num, date2_num], bins=bins, stacked=True,
-        color=['goldenrod', 'slateblue', 'indianred'], alpha=0.7,
-        label=[r'3 - 15 keV', r'15 - 30 keV', r'30 - 60 keV']
-    )
+    plt.figure(figsize=(8, 6))
 
-    # Plot NuSTAR observation windows, only add label once to avoid legend duplicates
+    plt.hist(date2_num, bins=bins, histtype='bar', alpha=0.4, edgecolor='indianred', facecolor='indianred', label=r'30 - 60 keV', linewidth=2)
+    plt.hist(date1_num, bins=bins, histtype='bar', alpha=0.4, edgecolor='royalblue', facecolor='royalblue', label=r'15 - 30 keV', linewidth=2)
+    plt.hist(date3_num, bins=bins, histtype='bar', alpha=0.4, edgecolor='seagreen', facecolor='seagreen', label=r'3 - 15 keV', linewidth=2)
+
+    # Plot NuSTAR observation windows, only add label once to avoid legend duplicates. We consider 1 month windows.
     for i, (start, end) in enumerate(zip(date_start_num, date_end_num)):
-        plt.axvspan(start, end, color='k', alpha=0.3, label=r'NuSTAR Observations' if i == 0 else None)
+        plt.axvspan(start, end, color='dimgray', alpha=0.4, label=r'NuSTAR Observations' if i == 0 else None, linewidth=2)
 
     plt.gca().xaxis.set_major_locator(mdates.YearLocator())
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
@@ -101,12 +101,21 @@ def plot_scw_distribution(date1, date2, date3):
     plt.xlabel(r'Date [YYYY]', fontsize=14)
     plt.ylabel(r'Number of SCWs', fontsize=14)
 
+    plt.ylim(0, None)  # Set y-axis limit to auto-adjust
+
+    plt.xticks([mdates.date2num(datetime.strptime(str(year), '%Y')) for year in range(2003, 2023) if year%2==0], rotation=45, fontsize=14)
+
     plt.tick_params(which='both', labelsize=14, direction='in')
     plt.gca().xaxis.set_ticks_position('both')
     plt.gca().yaxis.set_ticks_position('both')
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
+    plt.legend(fontsize=14, loc=0, fancybox=False, framealpha=1.0)
     plt.tight_layout()
+
+    if save:
+        plt.savefig("../data/Figures/ScW-distribution.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/ScW-distribution.pdf", bbox_inches='tight', dpi=300)
+        print(f"Saved ScW distribution chart.")
 
 
 def plot_snr(date, cr, var, color='k', print_outliers=False):
@@ -848,7 +857,7 @@ def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv
     plt.tight_layout()
 
 
-def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv"):
+def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv", save=False):
     curves = {}
     current_label = None
     x_vals = []
@@ -888,7 +897,7 @@ def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv"):
     colors = plt.cm.Dark2.colors
 
     # Plotting
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
     for idx, (label, (x, y)) in enumerate(curves.items()):
         new_label = label_map.get(label, label)
         if new_label == "ISGRI Sensitivity":
@@ -904,15 +913,15 @@ def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv"):
         break  
 
     plt.xlabel(r"Energy [keV]", fontsize=14)
-    plt.ylabel(r"Continuum Sensitivity [photons/cm²/s/keV]", fontsize=14)
+    plt.ylabel(r"Continuum Sensitivity [ph/cm²/s/keV]", fontsize=14)
 
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlim(10, 1100)
-    plt.ylim(2e-6, 2e-4)
+    plt.xlim(10, 1000)
+    plt.ylim(2e-6, 5e-5)
 
     plt.xticks([20, 50, 100, 200, 500, 1000], [r'20', r'50', r'100', r'200', r'500', r'1000'], fontsize=14)
-    plt.yticks([1e-5, 1e-4], [r'$10^{-5}$', r'$10^{-4}$'], fontsize=14)
+    plt.yticks([1e-5], [r'$10^{-5}$'], fontsize=14)
 
     plt.tick_params(which='both', labelsize=14, direction="in")
     plt.gca().xaxis.set_ticks_position('both')
@@ -922,4 +931,142 @@ def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv"):
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
 
+    if save:
+        plt.savefig("../data/Figures/ISGRI-sensitivity-2023.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/ISGRI-sensitivity-2023.pdf", bbox_inches='tight', dpi=300)
     return interp_func
+
+## Stacking plots
+
+def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False):
+    extent = [-plot_span, plot_span, -plot_span, plot_span]
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+    fs = 14
+
+    # Signal-to-noise (S/N) map
+    plt.figure(figsize=(8, 6))
+    plt.imshow(s_flu / np.sqrt(s_var), origin='lower', cmap='viridis', extent=extent)
+    # plt.scatter(0, 0, c='r', marker='o', s=200, alpha=0.3, label=r"Crab Position")
+    # plt.title("Stacked S/N Map at Crab Nebula's Position")
+    plt.xlabel(r"Pixel X", fontsize=fs)
+    plt.ylabel(r"Pixel Y", fontsize=fs)
+    cbar = plt.colorbar()
+    cbar.set_label(r"$\mathrm{SNR}$", fontsize=fs)
+    cbar.ax.tick_params(labelsize=fs)
+    plt.tick_params(which='both', labelsize=fs, direction="in", color='white')
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+    # plt.legend(fontsize=fs, loc='upper right', fancybox=False, framealpha=1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    if save:
+        plt.savefig("../data/Figures/Jupiter-SNR-map-3-15-keV.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Jupiter-SNR-map-3-15-keV.pdf", bbox_inches='tight', dpi=300)
+        print(f"Saved Jupiter SNR map.")
+
+    # Effective exposure map
+    plt.figure(figsize=(8, 6))
+    plt.imshow(s_expo, origin='lower', cmap='magma', extent=extent)
+    # plt.title("Normalized Stacked Exposure Map (Crab)", fontsize=fs)
+    plt.xlabel("Pixel X", fontsize=fs)
+    plt.ylabel("Pixel Y", fontsize=fs)
+    cbar = plt.colorbar()
+    cbar.set_label("Relative Exposure [s]", fontsize=fs)
+    cbar.ax.tick_params(labelsize=fs)
+    plt.tick_params(which='both', labelsize=fs, direction="in", color='white')
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    # Square root of the variance map
+    plt.figure(figsize=(8, 6))
+    plt.imshow(np.sqrt(s_var), origin='lower', cmap='inferno', extent=extent)
+    # plt.title("Stacked Standard Deviation Map (Crab)", fontsize=fs)
+    plt.xlabel("Pixel X", fontsize=fs)
+    plt.ylabel("Pixel Y", fontsize=fs)
+    cbar = plt.colorbar()
+    cbar.set_label("Standard Deviation [counts/s]", fontsize=fs)
+    cbar.ax.tick_params(labelsize=fs)
+    plt.tick_params(which='both', labelsize=fs, direction="in", color='white')
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    # Histogram of S/N
+    plt.figure(figsize=(8, 6))
+    plt.hist((s_flu / np.sqrt(s_var)).flatten(), bins=30, color='steelblue', edgecolor='black')
+    plt.title("Histogram of Signal-to-Noise (S/N) — Crab", fontsize=fs)
+    plt.xlabel("S/N", fontsize=fs)
+    plt.ylabel("Number of Pixels", fontsize=fs)
+    plt.tick_params(which='both', labelsize=fs, direction="in")
+    plt.grid(True, linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    # Histogram of √variance
+    plt.figure(figsize=(8, 6))
+    plt.hist(np.sqrt(s_var).flatten(), bins=30, color='indianred', edgecolor='black')
+    plt.title("Histogram of Standard Deviation — Crab", fontsize=fs)
+    plt.xlabel("Standard Deviation [counts/s]", fontsize=fs)
+    plt.ylabel("Number of Pixels", fontsize=fs)
+    plt.tick_params(which='both', labelsize=fs, direction="in")
+    plt.grid(True, linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+
+def stack_statistics(s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j, plot_span=20):
+    from scipy.stats import norm
+
+    # Compute S/N values and normalize by subtracting the empirical mean
+    s_n_values_raw = (s_flu / np.sqrt(s_var)).flatten()
+    empirical_mean = np.mean(s_n_values_raw)
+    s_n_values = s_n_values_raw - empirical_mean  # center at 0
+
+    # Histogram of S/N
+    hist, bin_edges = np.histogram(s_n_values, bins=30, density=True)
+    bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+
+    # Fit a Gaussian to the centered data
+    mu, std = norm.fit(s_n_values)
+
+    # Plot histogram
+    plt.figure(figsize=(6, 4))
+    plt.hist(s_n_values, bins=30, color='steelblue', edgecolor='black', density=True, alpha=0.7)
+    plt.title("Zero-Centered Histogram of Signal-to-Noise (S/N)")
+    plt.xlabel("S/N")
+    plt.ylabel("Probability Density")
+
+    # Plot Gaussian fit
+    xmin, xmax = plt.xlim()
+    x = np.linspace(xmin, xmax, 100)
+    p = norm.pdf(x, mu, std)
+    plt.plot(x, p, 'k--', linewidth=2, label=f"Gaussian Fit ({mu:.2f}, {std:.2f})")
+
+    # Compute and center the S/N at the map center
+    body_i = int(np.clip(body_i, plot_span, s_flu.shape[0] - plot_span - 1))
+    body_j = int(np.clip(body_j, plot_span, s_flu.shape[1] - plot_span - 1))
+
+    center_sn_raw = s_flu[body_i+1, body_j+1] / np.sqrt(s_var[body_i+1, body_j+1])
+    center_sn = center_sn_raw - empirical_mean
+
+    center_flux = s_flux[body_i+1, body_j+1]
+    center_flux_err = np.sqrt(s_var_flux[body_i+1, body_j+1])
+
+    print(f"Flux at center: {center_flux:.3e} ± {center_flux_err:.3e} ph/cm²/s")
+    print(f"3sigma upper limit at center: {center_flux + 3 * center_flux_err:.3e} ph/cm²/s")
+
+    plt.axvline(center_sn, color='r', linestyle=':', label=f"SNR at Center = {center_sn:.2f}")
+    plt.axvline(0, color='y', linestyle='-', label="Zero Mean")
+
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    # Compute significance
+    probability = norm.cdf(center_sn, mu, std)
+    print()
+    print(f"S/N at the center of the stacked map: {center_sn:.2f}")
+    print(f"Probability of observing S/N ≥ {center_sn + mu:.2f}: {(1 - probability)*100:.2f}%")

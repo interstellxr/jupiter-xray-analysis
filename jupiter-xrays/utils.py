@@ -24,6 +24,7 @@ import logging
 from oda_api.api import DispatcherAPI
 from oda_api.plot_tools import OdaImage, OdaLightCurve, OdaSpectrum
 from scipy.ndimage import shift
+import matplotlib.pyplot as plt
 
 warnings.simplefilter('ignore', FITSFixedWarning) # Ignore FITSFixedWarning for WCS
 
@@ -615,7 +616,7 @@ def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri"
 
 ## Stacking
 
-def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = '../data/jupiter_table.dat', crab_dir: str = "../data/weighted_crab_averages.txt"): 
+def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = '../data/jupiter_table.dat', crab_dir: str = "../data/weighted_crab_averages.txt", centering = False): 
     # Load Jupiter data from table
     jupiter_table = ascii.read(table_dir)
     jupiter_ra = jupiter_table['jupiter_ra'].data
@@ -654,6 +655,10 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
 
     s_flux = None      # stacked photon flux (converted from count rate)
     s_var_flux = None  # variance of photon flux
+
+    body_i = None
+    body_j = None
+
 
     total_max_isgri_exp = 0
     body_lim = {}
@@ -697,7 +702,39 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
             continue
         
         try:
-            body_i, body_j = [int(i) for i in wcs.all_world2pix(j_ra, j_dec, 0)]
+            if not centering:
+                body_i, body_j = [int(i) for i in wcs.world_to_pixel(SkyCoord(j_ra, j_dec, unit="deg"))]
+            else:
+                # Rough WCS-based center
+                rough_i, rough_j = wcs.world_to_pixel(SkyCoord(j_ra, j_dec, unit="deg"))
+
+                offset = 1
+                di, dj = int(rough_i), int(rough_j)
+
+                if False:
+                    patch = flu.data[di - offset : di + offset + 1, dj - offset : dj + offset + 1]
+                    if not np.isfinite(patch).any() or np.nansum(patch) == 0:
+                        print(f"Skipping {scw_id}: patch has no valid data")
+                    local_max = np.unravel_index(np.nanargmax(patch), patch.shape)
+
+                else:
+                    flux_patch = flu.data[di - offset : di + offset + 1, dj - offset : dj + offset + 1]
+                    var_patch  = var.data[di - offset : di + offset + 1, dj - offset : dj + offset + 1]
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        snr_patch = np.where(np.isfinite(flux_patch) & np.isfinite(var_patch) & (var_patch > 0),
+                                            flux_patch / np.sqrt(var_patch),
+                                            np.nan)
+                    if not np.isfinite(snr_patch).any() or np.nansum(snr_patch) == 0:
+                        print(f"Skipping {scw_id}: patch has no valid SNR values")
+                    local_max = np.unravel_index(np.nanargmax(snr_patch), snr_patch.shape)
+
+                offset_i, offset_j = local_max[0] - offset, local_max[1] - offset
+
+                body_i = int(rough_i + offset_i)
+                body_j = int(rough_j + offset_j)
+
+                if body_i is None or body_j is None:
+                    continue
         except Exception as e:
             print(f"Coordinate transform failed: {e}")
             continue
@@ -839,7 +876,7 @@ def convert_image_counts_to_flux(f_data, v_data, scw_obs_time, crab_means, crab_
     return flux_map, flux_err_map, erg_flux_map, erg_flux_err_map
 
 
-def stack_crab(dir: str):
+def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False):
     s_var = None
     s_flu = None
     s_expo = None
@@ -864,7 +901,25 @@ def stack_crab(dir: str):
 
                 wcs = WCS(sig.header)
                 try:
-                    center_i, center_j = wcs.world_to_pixel(SkyCoord(crab_ra, crab_dec, unit="deg"))
+                    if not centering:
+                        center_i, center_j = wcs.world_to_pixel(SkyCoord(crab_ra, crab_dec, unit="deg"))
+                    else:
+                        rough_i, rough_j = wcs.world_to_pixel(SkyCoord(crab_ra, crab_dec, unit="deg"))
+                        
+                        detection_span = 20
+                        di, dj = int(rough_i), int(rough_j)
+                        patch = flu.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
+
+                        if not np.isfinite(patch).any() or np.nansum(patch) == 0:
+                            print(f"Skipping {scw_id}: patch has no valid data")
+                            continue
+
+                        local_max = np.unravel_index(np.nanargmax(patch), patch.shape)
+                        offset_i, offset_j = local_max[0] - detection_span, local_max[1] - detection_span
+
+                        center_i = rough_i + offset_i
+                        center_j = rough_j + offset_j
+
                 except Exception as e:
                     print(f"Coordinate transform failed: {e}")
                     continue
@@ -908,6 +963,133 @@ def stack_crab(dir: str):
             except Exception as e:
                 print(f"Failed to process {scw_id}: {e}")
                 continue
+
+    if plot:
+        plot_span = 20
+        extent = [-plot_span, plot_span, -plot_span, plot_span]
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+
+        # Signal-to-noise (S/N) map
+        plt.figure(figsize=(8, 6))
+        plt.imshow(s_flu / np.sqrt(s_var), origin='lower', cmap='viridis', extent=extent)
+        # plt.scatter(0, 0, c='r', marker='o', s=200, alpha=0.3, label=r"Crab Position")
+        # plt.title("Stacked S/N Map at Crab Nebula's Position")
+        plt.xlabel(r"Pixel X", fontsize=14)
+        plt.ylabel(r"Pixel Y", fontsize=14)
+        cbar = plt.colorbar()
+        cbar.set_label(r"$\mathrm{SNR}$", fontsize=14)
+        cbar.ax.tick_params(labelsize=14)
+        plt.tick_params(which='both', labelsize=14, direction="in", color='white')
+        plt.gca().xaxis.set_ticks_position('both')
+        plt.gca().yaxis.set_ticks_position('both')
+        # plt.legend(fontsize=14, loc='upper right', fancybox=False, framealpha=1.0)
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.tight_layout()
+
+        if save:
+            plt.savefig("../data/Figures/Crab-SNR-map.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Crab-SNR-map.pdf", bbox_inches='tight', dpi=300)
+            print(f"Saved Crab SNR map.")
+
+        # Define common settings
+        label_fontsize = 14
+        tick_fontsize = 14
+
+        # Effective exposure map
+        plt.figure(figsize=(8, 6))
+        plt.imshow(s_expo, origin='lower', cmap='magma', extent=extent)
+        # plt.title("Normalized Stacked Exposure Map (Crab)", fontsize=label_fontsize)
+        plt.xlabel("Pixel X", fontsize=label_fontsize)
+        plt.ylabel("Pixel Y", fontsize=label_fontsize)
+        cbar = plt.colorbar()
+        cbar.set_label("Relative Exposure [s]", fontsize=label_fontsize)
+        cbar.ax.tick_params(labelsize=tick_fontsize)
+        plt.tick_params(which='both', labelsize=tick_fontsize, direction="in", color='white')
+        plt.gca().xaxis.set_ticks_position('both')
+        plt.gca().yaxis.set_ticks_position('both')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.tight_layout()
+
+        # Square root of the variance map
+        plt.figure(figsize=(8, 6))
+        plt.imshow(np.sqrt(s_var), origin='lower', cmap='inferno', extent=extent)
+        # plt.title("Stacked Standard Deviation Map (Crab)", fontsize=label_fontsize)
+        plt.xlabel("Pixel X", fontsize=label_fontsize)
+        plt.ylabel("Pixel Y", fontsize=label_fontsize)
+        cbar = plt.colorbar()
+        cbar.set_label("Standard Deviation [counts/s]", fontsize=label_fontsize)
+        cbar.ax.tick_params(labelsize=tick_fontsize)
+        plt.tick_params(which='both', labelsize=tick_fontsize, direction="in", color='white')
+        plt.gca().xaxis.set_ticks_position('both')
+        plt.gca().yaxis.set_ticks_position('both')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.tight_layout()
+
+        # Histogram of S/N
+        # plt.figure(figsize=(8, 6))
+        # plt.hist((s_flu / np.sqrt(s_var)).flatten(), bins=30, color='steelblue', edgecolor='black')
+        # plt.title("Histogram of Signal-to-Noise (S/N) — Crab", fontsize=label_fontsize)
+        # plt.xlabel("S/N", fontsize=label_fontsize)
+        # plt.ylabel("Number of Pixels", fontsize=label_fontsize)
+        # plt.tick_params(which='both', labelsize=tick_fontsize, direction="in")
+        # plt.grid(True, linestyle='--', linewidth=0.5)
+        # plt.tight_layout()
+
+        # Histogram of √variance
+        # plt.figure(figsize=(8, 6))
+        # plt.hist(np.sqrt(s_var).flatten(), bins=30, color='indianred', edgecolor='black')
+        # plt.title("Histogram of Standard Deviation — Crab", fontsize=label_fontsize)
+        # plt.xlabel("Standard Deviation [counts/s]", fontsize=label_fontsize)
+        # plt.ylabel("Number of Pixels", fontsize=label_fontsize)
+        # plt.tick_params(which='both', labelsize=tick_fontsize, direction="in")
+        # plt.grid(True, linestyle='--', linewidth=0.5)
+        # plt.tight_layout()
+
+    if statistics:
+        from scipy.stats import norm
+
+        # Normalize S/N histogram
+        s_n_values = (s_flu / np.sqrt(s_var)).flatten()
+        hist, bin_edges = np.histogram(s_n_values, bins=30, density=True)
+        bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+
+        # Fit Gaussian
+        mu, std = norm.fit(s_n_values)
+
+        # Plot the normalized S/N histogram
+        plt.figure(figsize=(8, 6))
+        plt.hist(s_n_values, bins=30, color='steelblue', edgecolor='black', density=True, alpha=0.7)
+        plt.title("Normalized Histogram of Signal-to-Noise (S/N)", fontsize=14)
+        plt.xlabel("S/N", fontsize=14)
+        plt.ylabel("Probability Density", fontsize=14)
+
+        # Gaussian fit
+        xmin, xmax = plt.xlim()
+        x = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x, mu, std)
+        plt.plot(x, p, 'k--', linewidth=2, label="Gaussian Fit")
+
+        center_i = np.clip(di, plot_span, s_flu.shape[0] - plot_span - 1)
+        center_j = np.clip(dj, plot_span, s_flu.shape[1] - plot_span - 1)
+
+        center_sn = s_flu[center_i+1, center_j+1] / np.sqrt(s_var[center_i+1, center_j+1])
+        # center_sn = s_flu[0, 0] / np.sqrt(s_var[0, 0])
+        # Mark center S/N and mean
+        plt.axvline(center_sn, color='r', linestyle=':', label=f"S/N at Center = {center_sn:.2f}")
+        plt.axvline(mu, color='y', linestyle='-', label=f"Mean = {mu:.2f}")
+        plt.legend(fontsize=14, loc='upper right', fancybox=False, framealpha=1.0)
+
+        # Format ticks and grid
+        plt.tick_params(which='both', labelsize=14, direction="in")
+        plt.grid(True, linestyle='--', linewidth=0.5)
+        plt.tight_layout()
+
+        # Output result
+        print(f"S/N at the center of the stacked map: {center_sn:.2f}")
+        probability = norm.cdf(center_sn, mu, std)
+        print(f"Probability of observing S/N ≥ {center_sn:.2f}: {(1 - probability)*100:.2f}%")
+
     return s_flu, s_var, s_expo
 
 
