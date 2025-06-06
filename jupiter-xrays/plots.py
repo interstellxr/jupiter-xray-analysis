@@ -12,12 +12,13 @@ import csv
 from astroquery.jplhorizons import Horizons
 from astropy import units as u
 from scipy.interpolate import interp1d
+from scipy.stats import norm
 
 ## General plotting functions
 
-def plot_errorbar(date, y, var, xlabel=r"Observation Date", ylabel=r"Count Rate [counts/s]", color='k'):
+def plot_errorbar(date, y, var, xlabel=r"Observation Year", ylabel=r"Count Rate [counts/s]", color='k'):
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
 
     plt.errorbar(
         date, y, yerr=np.sqrt(var), 
@@ -46,16 +47,131 @@ def plot_errorbar(date, y, var, xlabel=r"Observation Date", ylabel=r"Count Rate 
 
 
 def plot_countrate(date, cr, var, color='k'):
-    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Count Rate [counts/s]", color=color)
+    plot_errorbar(date, cr, var, xlabel=r"Observation Year", ylabel=r"Count Rate [counts/s]", color=color)
     
 
 def plot_flux(date, cr, var, color='k'):
-    plot_errorbar(date, cr, var, xlabel=r"Observation Date", ylabel=r"Flux [photons cm$^{-2}$ s$^{-1}$]", color=color)
+    plot_errorbar(date, cr, var, xlabel=r"Observation Year", ylabel=r"Flux [photons/cm$^2$/s]", color=color)
 
 
 def plot_offset(date, offset, color='k'):
-    plot_errorbar(date, offset, np.zeros(len(offset)), xlabel=r"Observation Date", ylabel=r"Offset [$^\circ$]", color=color)
+    plot_errorbar(date, offset, np.zeros(len(offset)), xlabel=r"Observation Year", ylabel=r"Offset [deg]", color=color)
 
+
+def bin_durations(start_dates, end_dates, bin_edges):
+    """Compute total duration (days) per bin for a list of intervals."""
+    durations = np.zeros(len(bin_edges) - 1)
+    for s, e in zip(start_dates, end_dates):
+        for i in range(len(bin_edges) - 1):
+            b_start = bin_edges[i]
+            b_end = bin_edges[i + 1]
+            overlap_start = max(s, b_start)
+            overlap_end = min(e, b_end)
+            if overlap_start < overlap_end:
+                durations[i] += overlap_end - overlap_start
+    return durations*24*3.6  # Convert from days to kiloseconds
+
+def plot_exposure_distribution(obs1, obs2, obs3, bin_months=6, save=False, colors=['skyblue', 'seagreen', 'k', 'dimgray']):
+    # Unpack tuples
+    date1, end1 = obs1
+    date2, end2 = obs2
+    date3, end3 = obs3
+
+    # Convert to datetime and then matplotlib float dates
+    def to_mpl_dates(dates): return mdates.date2num([Time(d, format='isot').datetime for d in dates])
+    date1_num, end1_num = to_mpl_dates(date1), to_mpl_dates(end1)
+    date2_num, end2_num = to_mpl_dates(date2), to_mpl_dates(end2)
+    date3_num, end3_num = to_mpl_dates(date3), to_mpl_dates(end3)
+
+    # Define bin edges
+    min_date = min(np.min(date1_num), np.min(date2_num), np.min(date3_num))
+    max_date = max(np.max(end1_num), np.max(end2_num), np.max(end3_num))
+    bin_width_days = bin_months * 30.44
+    bin_edges = np.arange(min_date, max_date + bin_width_days, bin_width_days)
+
+    # Bin durations (days)
+    dur1 = bin_durations(date1_num, end1_num, bin_edges)
+    dur2 = bin_durations(date2_num, end2_num, bin_edges)
+    dur3 = bin_durations(date3_num, end3_num, bin_edges)
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    width = bin_edges[1] - bin_edges[0]
+
+    plt.bar(bin_edges[:-1], dur2, width=width, align='edge', alpha=0.4,
+            edgecolor=colors[0], facecolor='white', label=r'30 - 60 keV', linewidth=2, hatch='\\\\')
+
+    plt.bar(bin_edges[:-1], dur1, width=width, align='edge', alpha=0.4,
+            edgecolor=colors[1], facecolor=colors[1], label=r'15 - 30 keV', linewidth=2, hatch='')
+
+    plt.bar(bin_edges[:-1], dur3, width=width, align='edge', alpha=0.4,
+            edgecolor=colors[2], facecolor='white', label=r'3 - 15 keV', linewidth=2, hatch='xx')
+    
+
+    # Add NuSTAR observation windows
+    nustar_dates = ["2015-01-30", "2017-05-16", "2018-04-01"] # "2017-06-18", "2017-07-10"
+    nustar_durations = [102.6, 134.5+101.5+134.2, 126.3] # ks
+    nustar_start_dt = [Time(d, format='isot').datetime for d in nustar_dates]
+    nustar_start_num = mdates.date2num(nustar_start_dt)
+
+    for i, (start_num, dur) in enumerate(zip(nustar_start_num, nustar_durations)):
+        plt.bar(start_num, dur, width=width,
+                alpha=0.5, edgecolor=colors[3], facecolor=colors[3],
+                label=r'NuSTAR Observations' if i == 0 else None, linewidth=2,
+                align='center')
+    
+    from matplotlib.ticker import FuncFormatter
+
+    ax = plt.gca()
+
+    # Choose tick positions at years 2004, 2008, ..., 2024
+    target_years = np.arange(2002, 2027, 4)
+    target_dates = [mdates.date2num(datetime(year, 1, 1)) for year in target_years]
+
+    # Apply ticks to both axes
+    ax.set_xticks(target_dates)
+
+    # Format bottom x-axis (MJD)
+    def mpl_date_to_mjd(x, pos):
+        dt = mdates.num2date(x)
+        mjd = Time(dt).mjd
+        return f"{mjd:.0f}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(mpl_date_to_mjd))
+    ax.tick_params(which='both', direction='in', labelsize=14)
+    ax.tick_params(axis='x', which='major', pad=7)
+
+    # Secondary x-axis for years
+    secax = ax.secondary_xaxis('top')
+    secax.set_xticks(target_dates)
+
+    def format_year(x, pos):
+        dt = mdates.num2date(x)
+        return dt.strftime('%Y')
+
+    secax.xaxis.set_major_formatter(FuncFormatter(format_year))
+    secax.tick_params(which='both', direction='in', labelsize=14)
+    secax.xaxis.set_ticks_position('both')
+    secax.yaxis.set_ticks_position('both')
+    secax.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+    xmin = mdates.date2num(datetime(2002, 1, 1))
+    xmax = mdates.date2num(datetime(2026, 1, 1))
+    ax.set_xlim(xmin, xmax)
+
+    plt.tick_params(which='both', labelsize=14, direction='in')
+    plt.xlabel(r'Date [MJD]', fontsize=14)
+    plt.ylabel(r'Total Observation Time [ks]', fontsize=14)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.legend(fontsize=14, loc=0, fancybox=False, framealpha=1.0)
+    plt.tight_layout()
+
+    if save:
+        plt.savefig("../data/Figures/ScW-duration-distribution.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Exposure-distribution.pdf", bbox_inches='tight', dpi=300)
+        print("Saved exposure distribution chart.")
+
+    plt.show()
 
 def plot_scw_distribution(date1, date2, date3, save=False):
     nustar_dates = ["2015-01-30", "2017-05-16", "2018-04-01"] # "2017-06-18", "2017-07-10"
@@ -64,6 +180,7 @@ def plot_scw_distribution(date1, date2, date3, save=False):
 
     date_start_num = mdates.date2num(nustar_dates)
     date_end_num = mdates.date2num(date_end_dt)
+    
 
     # 15 - 30 keV
     date1_dt = [Time(d, format='isot').datetime for d in date1]
@@ -98,7 +215,7 @@ def plot_scw_distribution(date1, date2, date3, save=False):
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     plt.gcf().autofmt_xdate()
 
-    plt.xlabel(r'Date [YYYY]', fontsize=14)
+    plt.xlabel(r'Observation Year', fontsize=14)
     plt.ylabel(r'Number of SCWs', fontsize=14)
 
     plt.ylim(0, None)  # Set y-axis limit to auto-adjust
@@ -122,23 +239,34 @@ def plot_snr(date, cr, var, color='k', print_outliers=False):
 
     snr = cr / np.sqrt(var)
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(date, snr, 'o', color=color, label=r'Pixel SNR')
+    plt.figure(figsize=(8, 6))
+    plt.scatter(date, snr, marker='.', color=color, label=r'Pixel S/N', s=40, zorder=2)
 
     outliers_idx = [i for i, snr in enumerate(snr) if snr > 3]
     plt.scatter(
         [date[i] for i in outliers_idx],
         [snr[i] for i in outliers_idx],
         marker='x',
-        color='r',
-        s=80,
-        label=r'SNR $>$ 3'
+        color='crimson',
+        s=60,
+        label=r'S/N $>$ +3'
     )
 
-    plt.axhline(3, color='k', linestyle='--', label=r'SNR = 3')
+    outliers_idx_neg = [i for i, snr in enumerate(snr) if snr < -3]
+    plt.scatter(
+        [date[i] for i in outliers_idx_neg],
+        [snr[i] for i in outliers_idx_neg],
+        marker='x',
+        color='royalblue',
+        s=60,
+        label=r'S/N $<$ -3'
+    )
 
-    plt.xlabel(r"Observation Date [YYYY]", fontsize=14)
-    plt.ylabel(r"Signal-to-Noise Ratio (SNR)", fontsize=14)
+    plt.axhline(3, color='k', linestyle='--', label=r'S/N = 3')
+    plt.axhline(-3, color='k', linestyle='--', label=r'S/N = 3')
+
+    plt.xlabel(r"Observation Year", fontsize=14)
+    plt.ylabel(r"Signal-to-Noise Ratio (S/N)", fontsize=14)
 
     plt.xticks(rotation=45, fontsize=14)
 
@@ -160,20 +288,36 @@ def plot_snr(date, cr, var, color='k', print_outliers=False):
             print()
 
 
-def plot_snr_distribution(cr, var, color='royalblue', print_statistics=True):
+def plot_snr_distribution(cr, var, color='royalblue', linecolor='r', print_statistics=True, fit=False, save=False, save_name=None):
 
     snr = cr / np.sqrt(var)
 
-    snr = snr - np.mean(snr)  # center the SNR values
+    snr = snr - np.mean(snr)  # center the S/N values
 
-    plt.figure(figsize=(10,6))
-    plt.hist(snr, bins=30, color=color, edgecolor='k', alpha=0.7)
+    plt.figure(figsize=(8,6))
+    counts, bins, _ = plt.hist(snr, bins=50, color=color, edgecolor='k', alpha=0.7, density=True)
     # plt.axvline(0, color='k', linestyle='-.')
-    plt.axvline(3, color='indianred', linestyle='--', label=r'SNR = 3')
-    plt.axvline(-3, color='indianred', linestyle='--', label=r'SNR = -3')
+    plt.axvline(3, color=linecolor, linestyle='-.', label=r'S/N = 3')
+    plt.axvline(-3, color=linecolor, linestyle=':', label=r'S/N = -3')
 
-    plt.xlabel(r"Signal-to-Noise Ratio (SNR)", fontsize=14)
-    plt.ylabel(r"Number of Observations", fontsize=14)
+    from scipy.stats import normaltest
+    stat, pval = normaltest(snr)
+    print(f"Normality p-value: {pval:.3e}")
+    print()
+
+    # fit a gaussian
+    if fit:
+        mu, std = norm.fit(snr)
+
+        # Plot Gaussian fit
+        bin_width = bins[1] - bins[0]
+        xmin, xmax = plt.xlim()
+        x = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x, mu, std)#* len(snr) * bin_width
+        plt.plot(x, p, 'k--', linewidth=2, label=rf"Gaussian Fit ({mu:.2f}, {std:.2f})")
+
+    plt.xlabel(r"S/N", fontsize=14)
+    plt.ylabel(r"Normalized Distribution", fontsize=14)
 
     plt.tick_params(which='both', labelsize=14, direction='in')
     plt.gca().xaxis.set_ticks_position('both')
@@ -182,12 +326,17 @@ def plot_snr_distribution(cr, var, color='royalblue', print_statistics=True):
     plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
     plt.tight_layout()
 
+    if save:
+        plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+
     # Outlier statistics
     outliers = (snr > 3) | (snr < -3)
     pos_outliers = snr > 3
     n_outliers = np.sum(outliers)
     n_pos_outliers = np.sum(pos_outliers)
     n_total = len(snr)
+    print(f"Total observations: {n_total}") 
 
     # Expected counts
     expected_total = 0.0027 * n_total
@@ -197,22 +346,22 @@ def plot_snr_distribution(cr, var, color='royalblue', print_statistics=True):
     p_total = 0.0027
     p_pos = 0.00135
 
-    p_value_total = binom.sf(n_outliers - 1, n_total, p_total)
-    p_value_pos = binom.sf(n_pos_outliers - 1, n_total, p_pos)
+    p_value_total = binom.pmf(n_outliers, n_total, p_total)
+    p_value_pos = binom.pmf(n_pos_outliers, n_total, p_pos)
 
     if print_statistics:
         print(f"Total points: {n_total}")
-        print(f"Observed points |SNR| > 3: {n_outliers}")
-        print(f"Expected points |SNR| > 3: {expected_total:.2f}")
+        print(f"Observed points |S/N| > 3: {n_outliers}")
+        print(f"Expected points |S/N| > 3: {expected_total:.2f}")
         print(f"Observed fraction: {n_outliers / n_total * 100:.2f}%")
         print(f"Expected fraction: 0.27%")
-        print(f"P-value (|SNR| > 3): {p_value_total:.3e}")
+        print(f"P-value (|S/N| > 3): {p_value_total:.3e}")
         print()
-        print(f"Observed points SNR > 3: {n_pos_outliers}")
-        print(f"Expected points SNR > 3: {expected_pos:.2f}")
+        print(f"Observed points S/N > 3: {n_pos_outliers}")
+        print(f"Expected points S/N > 3: {expected_pos:.2f}")
         print(f"Observed fraction (positive only): {n_pos_outliers / n_total * 100:.2f}%")
         print(f"Expected fraction: 0.135%")
-        print(f"P-value (SNR > 3): {p_value_pos:.3e}")
+        print(f"P-value (S/N > 3): {p_value_pos:.3e}")
 
 
 def plot_bkgd_snr(date, cr, var, acr, avar, color='k', print_outliers=True):
@@ -221,10 +370,10 @@ def plot_bkgd_snr(date, cr, var, acr, avar, color='k', print_outliers=True):
     plot_snr(date, signal, variance, color=color, print_outliers=print_outliers)
 
 
-def plot_bkgd_snr_distribution(cr, var, acr, avar, color='royalblue', print_statistics=True):
+def plot_bkgd_snr_distribution(cr, var, acr, avar, color='royalblue', linecolor='r', print_statistics=True, fit=False, save=False, save_name=None):
     signal = cr - acr
     variance = var + avar
-    plot_snr_distribution(signal, variance, color=color, print_statistics=print_statistics)
+    plot_snr_distribution(signal, variance, color=color, linecolor=linecolor, print_statistics=print_statistics, fit=fit, save=save, save_name=save_name)
 
 
 ## Plotting within a given time range
@@ -275,7 +424,7 @@ def plot_data_for_date_range(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_
     if plot:
 
         # Plot count rate over time with errorbars and std region
-        plt.figure(figsize=(10,6))
+        plt.figure(figsize=(8,6))
         plt.errorbar(img_times1_filtered, cr1_filtered, yerr=np.sqrt(vr1_filtered), color='r', fmt='o', capsize=5, label='Pixel')
         plt.axhline(avg_cr1, color='r', linestyle='--')
 
@@ -288,7 +437,7 @@ def plot_data_for_date_range(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_
             plt.errorbar(lc_times1_filtered, lc1_filtered, yerr=lc1_err_filtered, color='c', fmt='o', capsize=5, label='LC')
             plt.axhline(avg_lc1, color='c', linestyle='--')
         
-        plt.xlabel("Observation Date")
+        plt.xlabel("Observation Year")
         plt.ylabel("Count Rate (counts/s)")
         plt.xticks(rotation=45)
         plt.grid(True, linestyle="--", alpha=0.6)
@@ -296,7 +445,7 @@ def plot_data_for_date_range(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_
         plt.tight_layout()
 
         # Plot error vs annular error
-        plt.figure(figsize=(10,6))
+        plt.figure(figsize=(8,6))
         x = np.linspace(0, np.max(np.sqrt(vr1_filtered)), 100)
         plt.plot(x, x, color='k', linestyle='--', label='y = x')
         plt.errorbar(np.sqrt(vr1_filtered), np.sqrt(avr1_filtered), fmt='o', capsize=0)
@@ -314,7 +463,7 @@ def plot_data_for_date_range(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_
         plt.figure()
         plt.errorbar(img_times1_filtered, acr1_filtered, yerr=np.sqrt(avr1_filtered), fmt='o', capsize=0)
         plt.axhline(np.mean(acr1_filtered), color='b', linestyle='--', label=r'Mean Annular Count Rate')
-        plt.xlabel(r"Observation Date")
+        plt.xlabel(r"Observation Year")
         plt.ylabel(r"Annular count rate [counts/s]")
 
         plt.xticks(rotation=45, fontsize=14)
@@ -373,7 +522,7 @@ def plot_data_by_month(date1, lc1_date, cr1, cr1_psf, cr1_cpsf, vr1, err1_psf, e
     return data_dict
 
 
-def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1_date: datetime, flux1_end: datetime, color='royalblue', plot=True, dual_plot='energy'):
+def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1_date: datetime, flux1_end: datetime, color='royalblue', plot=True, dual_plot='energy', save=False, save_name=None):
     years = []
     months = []
 
@@ -469,13 +618,13 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
     if plot:
 
         if dual_plot=='energy':
-            fig, ax1 = plt.subplots(figsize=(10, 6))
+            fig, ax1 = plt.subplots(figsize=(8, 6))
 
             # First y-axis (left) for photon flux
             ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='o', capsize=0,
                         markerfacecolor=color, markeredgecolor='k', ecolor='k', label='Photon Flux')
-            ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
-            ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+            ax1.set_xlabel(r'Observation Year', fontsize=14)
+            ax1.set_ylabel(r'Photon Flux [photons/cm$^2$/s]', fontsize=14, color='k')
             ax1.tick_params(axis='y', labelcolor='k')
             ax1.tick_params(which='both', labelsize=14, direction='in')
             ax1.xaxis.set_ticks_position('both')
@@ -486,8 +635,8 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             # Second y-axis (right) for erg flux
             ax2 = ax1.twinx()
             ax2.errorbar(unique_dates, erg_flux, yerr=erg_flux_err, fmt='s', capsize=0,
-                        markerfacecolor='orangered', markeredgecolor='k', ecolor='k', label='Erg Flux', alpha=0.0)
-            ax2.set_ylabel(r'Erg Flux [erg cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+                        markerfacecolor='orangered', markeredgecolor='k', ecolor='k', label='Energy Flux', alpha=0.0)
+            ax2.set_ylabel(r'Energy Flux [erg/cm$^2$/s]', fontsize=14, color='k')
             ax2.tick_params(axis='y', labelcolor='k')
             ax2.tick_params(which='both', labelsize=14, direction='in')
             ax2.yaxis.set_ticks_position('both')
@@ -496,13 +645,13 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
         elif dual_plot=='exposure':
             bars = False
             if bars:
-                fig, ax1 = plt.subplots(figsize=(10, 6))
+                fig, ax1 = plt.subplots(figsize=(8, 6))
 
                 # --- First y-axis (left): Photon Flux ---
                 ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='o', capsize=0,
                             markerfacecolor=color, markeredgecolor='k', ecolor='k', label='Photon Flux')
-                ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
-                ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+                ax1.set_xlabel(r'Observation Year', fontsize=14)
+                ax1.set_ylabel(r'Photon Flux [photons/cm$^2$/s]', fontsize=14, color='k')
                 ax1.tick_params(axis='y', labelcolor='k')
                 ax1.tick_params(which='both', labelsize=14, direction='in')
                 ax1.xaxis.set_ticks_position('both')
@@ -524,37 +673,61 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
 
                 fig.tight_layout()
             else:
-                fig, ax1 = plt.subplots(figsize=(10, 6))
+                fig, ax1 = plt.subplots(figsize=(8, 6))
 
+                # Convert unique_dates to matplotlib float dates
+                unique_dates_num = mdates.date2num(unique_dates)
+
+                # Durations in ks
                 durations_ks = [m / 1000.0 for m in monthly_durations_filled]
 
-                # --- Scatter plot with color encoding for durations ---
-                sc = ax1.scatter(unique_dates, ph_flux, c=durations_ks, cmap='viridis',
+                # Scatter plot with color encoding
+                sc = ax1.scatter(unique_dates_num, ph_flux, c=durations_ks, cmap='viridis',
                                 edgecolor='k', s=40, label='Photon Flux')
 
-                # Add error bars (plotted separately to avoid color distortion)
-                ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='none',
+                # Error bars
+                ax1.errorbar(unique_dates_num, ph_flux, yerr=ph_flux_err, fmt='none',
                             ecolor='k', capsize=0, zorder=0)
 
-                ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
-                ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14)
-                ax1.tick_params(axis='y', labelcolor='k')
-                ax1.tick_params(which='both', labelsize=14, direction='in')
+                # Axis labels
+                ax1.set_ylabel(r'Photon Flux [photons/cm$^2$/s]', fontsize=14)
+                ax1.set_xlabel(r'Date [MJD]', fontsize=14)
+
+                # Tick parameters
+                ax1.tick_params(axis='both', which='both', labelsize=14, direction='in', pad=5)
                 ax1.xaxis.set_ticks_position('both')
                 ax1.yaxis.set_ticks_position('both')
                 ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
-                plt.xticks(rotation=45, fontsize=14)
 
-                # Add colorbar for durations
+                # Set x-ticks (every 4 years)
+                years = np.arange(2002, 2026, 4)
+                year_dates = [mdates.date2num(datetime(year, 1, 1)) for year in years]
+                ax1.set_xticks(year_dates)
+
+                # Set x-limits to 2004–2024
+                xmin = mdates.date2num(datetime(2004, 1, 1))
+                xmax = mdates.date2num(datetime(2024, 1, 1))
+                ax1.set_xlim(xmin, xmax)
+
+                # Secondary x-axis for years
+                secax = ax1.secondary_xaxis('top')
+                secax.set_xticks(year_dates)
+                secax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+                secax.tick_params(axis='x', which='both', labelsize=14, direction='in', pad=5)
+                secax.xaxis.set_ticks_position('both')
+                secax.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+                # Colorbar for durations
+                sc.set_clim(0, np.nanmax(durations_ks))
                 cbar = fig.colorbar(sc, ax=ax1, pad=0.02)
                 cbar.set_label(r'Exposure Duration [ks]', fontsize=14)
                 cbar.ax.tick_params(labelsize=14)
 
+                # Tight layout
                 fig.tight_layout()
-
-        import matplotlib.gridspec as gridspec
-        if dual_plot == 'all':
-            fig = plt.figure(figsize=(10, 6))
+        elif dual_plot == 'all':
+            import matplotlib.gridspec as gridspec
+            fig = plt.figure(figsize=(8, 6))
             gs = gridspec.GridSpec(1, 2, width_ratios=[20, 1])  # [main plot, colorbar]
 
             ax1 = fig.add_subplot(gs[0])
@@ -565,12 +738,12 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
 
             # --- Photon flux with color-coded exposure ---
             sc = ax1.scatter(unique_dates, ph_flux, c=durations_ks, cmap='viridis',
-                            edgecolor='k', s=40, label='Photon Flux')
+                            edgecolor='k', s=40, label=r'Photon Flux')
             ax1.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='none',
                         ecolor='k', capsize=0, zorder=0)
 
-            ax1.set_xlabel(r'Date [YYYY]', fontsize=14)
-            ax1.set_ylabel(r'Photon Flux [photons cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+            ax1.set_xlabel(r'Observation Year', fontsize=14)
+            ax1.set_ylabel(r'Photon Flux [photons/cm$^2$/s]', fontsize=14, color='k')
             ax1.tick_params(axis='y', labelcolor='k')
             ax1.tick_params(which='both', labelsize=14, direction='in')
             ax1.xaxis.set_ticks_position('both')
@@ -578,11 +751,11 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
             plt.setp(ax1.get_xticklabels(), rotation=45)
 
-            # --- Erg flux ---
+            # --- Energy flux ---
             ax2.errorbar(unique_dates, erg_flux, yerr=erg_flux_err, fmt='s', capsize=0,
                         markerfacecolor='orangered', markeredgecolor='k', ecolor='k',
-                        label='Erg Flux', alpha=0.0)
-            ax2.set_ylabel(r'Erg Flux [erg cm$^{-2}$ s$^{-1}$]', fontsize=14, color='k')
+                        label=r'Energy Flux', alpha=0.0)
+            ax2.set_ylabel(r'Energy Flux [erg/cm$^2$/s]', fontsize=14, color='k')
             ax2.tick_params(axis='y', labelcolor='k')
             ax2.tick_params(which='both', labelsize=14, direction='in')
             ax2.yaxis.set_ticks_position('both')
@@ -595,10 +768,10 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
 
             fig.tight_layout()
         else:
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(8, 6))
             plt.errorbar(unique_dates, ph_flux, yerr=ph_flux_err, fmt='o', capsize=0, markerfacecolor=color, markeredgecolor='k', ecolor='k')
-            plt.xlabel(r'Date [YYYY]')
-            plt.ylabel(r'Flux')
+            plt.xlabel(r'Observation Year')
+            plt.ylabel(r'Photon Flux [photons/cm$^2$/s]')
 
             plt.xticks(rotation=45, fontsize=14)
 
@@ -609,10 +782,10 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             # plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
             plt.tight_layout()
 
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(8, 6))
             plt.errorbar(unique_dates, erg_flux, yerr=erg_flux_err, fmt='o', capsize=0, markerfacecolor=color, markeredgecolor='k', ecolor='k')
-            plt.xlabel(r'Date [YYYY]')
-            plt.ylabel(r'Flux')
+            plt.xlabel(r'Observation Year')
+            plt.ylabel(r'Energy Flux [erg/cm$^2$/s]')
 
             plt.xticks(rotation=45, fontsize=14)
 
@@ -622,11 +795,15 @@ def plot_monthly_flux_lc(ph_flux1, ph_flux1_err, erg_flux1, erg_flux1_err, flux1
             plt.grid(True, which='both', linestyle='--', linewidth=0.5)
             # plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
             plt.tight_layout()
+
+        if save:
+            plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
     return unique_dates, ph_flux, erg_flux, ph_flux_err, erg_flux_err
 
 ## Plot upper limits on spectrum
 
-def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")]):
+def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")], save=False, save_name=None):
 
     curves = {}
     current_label = None
@@ -701,10 +878,11 @@ def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_lim
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
 
-    colors = plt.cm.Dark2.colors
+    colors = plt.cm.Dark2.colors[::2]
 
     # Plotting
     plt.figure(figsize=(10, 6))
+
     for idx, (label, (x, y)) in enumerate(curves.items()):
         new_label = label_map.get(label, label)
         if new_label == "XMM Observation":
@@ -722,12 +900,22 @@ def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_lim
             elif label == "Curve4":
                 plt.step(x_step, y_step, where='post', label=new_label, color='violet')
         else:
-            # plt.plot(x, y, label=new_label, color='k', marker='|', markersize=8, markeredgewidth=2)
             plt.plot(ulysses_band, [ulysses, ulysses], label=new_label, color='k', marker='|', markersize=8, markeredgewidth=2)
+            plt.errorbar([np.mean(ulysses_band)-1], [ulysses], uplims=True, yerr=ulysses * (10**0.1 - 1), color='k')
 
     #for upper_limit in upper_limits:
-    for x_range, y_value, label in upper_limits:
-        plt.plot(x_range, [y_value, y_value], color='black', linestyle='--', label=label, marker='|', markersize=8, markeredgewidth=2)
+    for i, (x_range, y_value, label) in enumerate(upper_limits):
+        if not i == 0:
+            label = None
+        else:
+            label = r"INTEGRAL Upper Limits"
+        if i == 2:
+            offset = 2
+        else:
+            offset = 1
+        plt.plot(x_range, [y_value, y_value], color=colors[0], linestyle='-', label=label, marker='|', markersize=8, markeredgewidth=2)
+        plt.errorbar([np.mean(x_range)-offset], [y_value], uplims=True, yerr=y_value * (10**0.1 - 1), color=colors[0])
+
 
     plt.xlabel(r"Energy [keV]", fontsize=14)
     plt.ylabel(r"Flux [photons/cm²/s/keV]", fontsize=14)
@@ -738,18 +926,22 @@ def plot_upper_limits(filename: str = '../data/digitized-spectra.csv', upper_lim
     plt.ylim(3e-8, 2e-5)#1.2e-6)
 
     plt.xticks([3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50], [r'3', r'4', r'5', r'6', r'7', r'8', r'9', r'10', r'20', r'30', r'50'], fontsize=14)
-    plt.yticks([1e-7, 1e-6], [r'$10^{-7}$', r'$10^{-6}$'], fontsize=14)
+    plt.yticks([1e-7, 1e-6, 1e-5], [r'$10^{-7}$', r'$10^{-6}$', r'$10^{-5}$'], fontsize=14)
 
     plt.tick_params(which='both', labelsize=14, direction="in")
     plt.gca().xaxis.set_ticks_position('both')
     plt.gca().yaxis.set_ticks_position('both')
 
-    plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0)
+    plt.legend(fontsize=14, loc='upper left', fancybox=False, framealpha=1.0, bbox_to_anchor=(0, 0.92))
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
 
+    if save:
+        plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
 
-def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")]):
+
+def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv', upper_limits: list=[([1.0, 2.0], 0.0, r"Test")], save=False, save_name=None):
     jupiter = Horizons(id='599', location='@0',epochs=Time('2015-02-20', format='isot').mjd)
     eph = jupiter.ephemerides()
     D = eph['delta']
@@ -825,17 +1017,21 @@ def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
 
-    colors = plt.cm.Dark2.colors
+    colors = plt.cm.Dark2.colors[::2]
 
     # Plotting
     plt.figure(figsize=(8, 6))
     for idx, (label, (x, y)) in enumerate(curves.items()):
         new_label = label_map.get(label, label)
         plt.plot(x, y, label=new_label, color=colors[idx], marker='|', markersize=8, markeredgewidth=2)
+        plt.errorbar([np.mean(x)-1], [y[0]], uplims=True, yerr=y[0] * (10**0.1 - 1), color=colors[idx])
+
+    colors = plt.cm.tab20.colors[::2]
 
     for i, (x_range, y_value, label) in enumerate(upper_limits):
         y_value = P[i].value
-        plt.plot(x_range, [y_value, y_value], color=colors[idx+i], linestyle='--', label=label, marker='|', markersize=8, markeredgewidth=2)
+        plt.plot(x_range, [y_value, y_value], color=colors[i], linestyle='-', label=label, marker='|', markersize=8, markeredgewidth=2)
+        plt.errorbar([np.mean(x_range)-1], [y_value], uplims=True, yerr=y_value * (10**0.1 - 1), color=colors[i])
 
     plt.xlabel(r"Energy [keV]", fontsize=14)
     plt.ylabel(r"X-Ray Power at Jupiter [W]", fontsize=14)
@@ -856,72 +1052,98 @@ def plot_upper_limits_ulysses(filename: str = '../data/digitized-upperlimits.csv
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
 
+    if save:
+        plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
 
-def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv", save=False):
-    curves = {}
-    current_label = None
-    x_vals = []
-    y_vals = []
+
+def plot_sensitivity(filenames=["../data/ISGRI-sensitivity-2023.csv", "../data/JEMX-sensitivity.csv"], save=False):
+    import os
 
     label_map = {
-        "Curve1": "ISGRI Sensitivity",
+        "../data/ISGRI-sensitivity-2023.csv": "ISGRI Sensitivity",
+        "../data/JEMX-sensitivity.csv": "JEM-X Sensitivity",
     }
 
-    with open(filename, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue  
-            if line.lower().startswith('x'):
-                if current_label and x_vals:
-                    curves[current_label] = (np.array(x_vals), np.array(y_vals))
-                
-                parts = line.split(',')
-                current_label = parts[1].strip()
-                x_vals = []
-                y_vals = []
-            else:
-                try:
-                    x, y = map(float, line.split(','))
-                    x_vals.append(x)
-                    y_vals.append(y)
-                except ValueError:
-                    continue  
+    # Which files need erg -> photon conversion
+    needs_conversion = {
+        "../data/ISGRI-sensitivity-2023.csv": False,
+        "../data/JEMX-sensitivity.csv": True,
+    }
 
-    if current_label and x_vals:
-        curves[current_label] = (np.array(x_vals), np.array(y_vals))
+    curves = {}
+    interp_funcs = {}
 
+    for filename in filenames:
+        current_label = None
+        x_vals = []
+        y_vals = []
 
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.lower().startswith('x'):
+                    current_label = "Curve1"
+                    x_vals = []
+                    y_vals = []
+                else:
+                    try:
+                        x, y = map(float, line.split(','))
+                        x_vals.append(x)
+                        y_vals.append(y)
+                    except ValueError:
+                        continue
+
+        if x_vals:
+            x_arr = np.array(x_vals)
+            y_arr = np.array(y_vals)
+
+            # Convert JEM-X from erg to photons and energy from MeV to keV and scale from 1 Ms to 77 ks
+            if needs_conversion.get(filename, False):
+                # E [keV], y [erg/cm²/s/keV]
+                y_arr = y_arr / (6 * 1.60218e-9)  # now in ph/cm²/s/keV
+                x_arr *= 1000  # convert MeV to keV
+                y_arr *= 77e3 / 1e6  # scale from 1 Ms to 77 ks
+
+            label = label_map.get(filename, filename)
+            curves[label] = (x_arr, y_arr)
+            interp_funcs[label] = interp1d(x_arr, y_arr, kind='linear', bounds_error=False, fill_value="extrapolate")
+
+    # Plotting
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
     colors = plt.cm.Dark2.colors
 
-    # Plotting
+
     plt.figure(figsize=(8, 6))
     for idx, (label, (x, y)) in enumerate(curves.items()):
-        new_label = label_map.get(label, label)
-        if new_label == "ISGRI Sensitivity":
-            plt.scatter(x, y, label=new_label, color='k', marker='.', s=40)
+        color = colors[idx % len(colors)]
 
-    for label, (x, y) in curves.items():
-        interp_func = interp1d(x, y, kind='cubic', bounds_error=False, fill_value="extrapolate")
-        
+        if label == "ISGRI Sensitivity":
+            marker = '.'
+            s = 40
+        if label == "JEM-X Sensitivity":
+            marker = '^'
+            s = 30
+
+        plt.scatter(x, y, label=label, color=color, marker=marker, s=s)
+
+        interp_func = interp_funcs[label]
         x_fine = np.logspace(np.log10(x.min()), np.log10(x.max()), 1000)
         y_fine = interp_func(x_fine)
-        
-        plt.plot(x_fine, y_fine, '-', label='Interpolated Curve', color='k', alpha=0.5)
-        break  
+        plt.plot(x_fine, y_fine, '-', label=f"Interpolated", color=color, alpha=0.7)
 
     plt.xlabel(r"Energy [keV]", fontsize=14)
-    plt.ylabel(r"Continuum Sensitivity [ph/cm²/s/keV]", fontsize=14)
-
+    plt.ylabel(r"Continuum Sensitivity [photons/cm$^2$/s/keV]", fontsize=14)
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlim(10, 1000)
-    plt.ylim(2e-6, 5e-5)
+    plt.xlim(3, 1000)
+    plt.ylim(5e-7, 5e-5)
 
-    plt.xticks([20, 50, 100, 200, 500, 1000], [r'20', r'50', r'100', r'200', r'500', r'1000'], fontsize=14)
-    plt.yticks([1e-5], [r'$10^{-5}$'], fontsize=14)
+    plt.xticks([3, 10, 20, 50, 100, 200, 500, 1000], [r'3', r'10', r'20', r'50', r'100', r'200', r'500', r'1000'], fontsize=14)
+    plt.yticks([1e-6, 1e-5], [r'$10^{-6}$', r'$10^{-5}$'], fontsize=14)
 
     plt.tick_params(which='both', labelsize=14, direction="in")
     plt.gca().xaxis.set_ticks_position('both')
@@ -932,13 +1154,16 @@ def plot_sensitivity(filename: str = "../data/ISGRI-sensitivity-2023.csv", save=
     plt.tight_layout()
 
     if save:
-        plt.savefig("../data/Figures/ISGRI-sensitivity-2023.pdf", bbox_inches='tight', dpi=300)
-        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/ISGRI-sensitivity-2023.pdf", bbox_inches='tight', dpi=300)
-    return interp_func
+        plt.savefig("../data/Figures/ISGRI-JEMX-sensitivity.pdf", bbox_inches='tight', dpi=300)
+        alt_path = "/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/ISGRI-JEMX-sensitivity.pdf"
+        if os.path.exists("/mnt/c/Users/luoji/Desktop/"):
+            plt.savefig(alt_path, bbox_inches='tight', dpi=300)
+
+    return interp_funcs
 
 ## Stacking plots
 
-def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False):
+def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False, save_name=None):
     extent = [-plot_span, plot_span, -plot_span, plot_span]
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
@@ -952,7 +1177,7 @@ def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False):
     plt.xlabel(r"Pixel X", fontsize=fs)
     plt.ylabel(r"Pixel Y", fontsize=fs)
     cbar = plt.colorbar()
-    cbar.set_label(r"$\mathrm{SNR}$", fontsize=fs)
+    cbar.set_label(r"$\mathrm{S/N}$", fontsize=fs)
     cbar.ax.tick_params(labelsize=fs)
     plt.tick_params(which='both', labelsize=fs, direction="in", color='white')
     plt.gca().xaxis.set_ticks_position('both')
@@ -962,9 +1187,9 @@ def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False):
     plt.tight_layout()
 
     if save:
-        plt.savefig("../data/Figures/Jupiter-SNR-map-3-15-keV.pdf", bbox_inches='tight', dpi=300)
-        plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Jupiter-SNR-map-3-15-keV.pdf", bbox_inches='tight', dpi=300)
-        print(f"Saved Jupiter SNR map.")
+        plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        print(f"Saved Jupiter S/N map.")
 
     # Effective exposure map
     plt.figure(figsize=(8, 6))
@@ -1017,8 +1242,10 @@ def plot_stack(s_flu, s_var, s_expo, plot_span=20, save=False):
     plt.tight_layout()
 
 
-def stack_statistics(s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j, plot_span=20):
-    from scipy.stats import norm
+def stack_statistics(s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j, plot_span=20, color='royalblue', linecolors=['k', 'r'], save=False, save_name='stack_statistics'):
+    
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
 
     # Compute S/N values and normalize by subtracting the empirical mean
     s_n_values_raw = (s_flu / np.sqrt(s_var)).flatten()
@@ -1033,17 +1260,16 @@ def stack_statistics(s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j, p
     mu, std = norm.fit(s_n_values)
 
     # Plot histogram
-    plt.figure(figsize=(6, 4))
-    plt.hist(s_n_values, bins=30, color='steelblue', edgecolor='black', density=True, alpha=0.7)
-    plt.title("Zero-Centered Histogram of Signal-to-Noise (S/N)")
-    plt.xlabel("S/N")
-    plt.ylabel("Probability Density")
+    plt.figure(figsize=(8, 6))
+    plt.hist(s_n_values, bins=50, color=color, edgecolor=linecolors[0], density=True, alpha=0.7)
+    plt.xlabel(r"S/N", fontsize=14)
+    plt.ylabel(r"Probability Density", fontsize=14)
 
     # Plot Gaussian fit
     xmin, xmax = plt.xlim()
     x = np.linspace(xmin, xmax, 100)
     p = norm.pdf(x, mu, std)
-    plt.plot(x, p, 'k--', linewidth=2, label=f"Gaussian Fit ({mu:.2f}, {std:.2f})")
+    plt.plot(x, p, 'k--', linewidth=1.5, label=rf"Gaussian Fit ({mu:.2f}, {std:.2f})")
 
     # Compute and center the S/N at the map center
     body_i = int(np.clip(body_i, plot_span, s_flu.shape[0] - plot_span - 1))
@@ -1058,12 +1284,20 @@ def stack_statistics(s_flu, s_var, s_expo, s_flux, s_var_flux, body_i, body_j, p
     print(f"Flux at center: {center_flux:.3e} ± {center_flux_err:.3e} ph/cm²/s")
     print(f"3sigma upper limit at center: {center_flux + 3 * center_flux_err:.3e} ph/cm²/s")
 
-    plt.axvline(center_sn, color='r', linestyle=':', label=f"SNR at Center = {center_sn:.2f}")
-    plt.axvline(0, color='y', linestyle='-', label="Zero Mean")
+    plt.axvline(center_sn, color=linecolors[1], linestyle='-.', label=rf"S/N at Center = {center_sn:.2f}", linewidth=1.5)
+    # plt.axvline(0, color=linecolors[2], linestyle='-', label=r"Zero Mean")
 
-    plt.legend()
-    plt.grid(True)
+    plt.tick_params(which='both', labelsize=14, direction='in')
+    plt.gca().xaxis.set_ticks_position('both')
+    plt.gca().yaxis.set_ticks_position('both')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.legend(fontsize=14, loc='upper right', fancybox=False, framealpha=1.0)
     plt.tight_layout()
+
+    if save:
+        plt.savefig(f"../data/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/{save_name}.pdf", bbox_inches='tight', dpi=300)
+        print(f"Saved Jupiter S/N statistics.")
 
     # Compute significance
     probability = norm.cdf(center_sn, mu, std)

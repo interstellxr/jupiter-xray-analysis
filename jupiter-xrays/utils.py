@@ -233,7 +233,7 @@ def JupiterPos(fits_path: str, parallax: bool=True):
 crab_coordinates = SkyCoord.from_name("Crab")
 crab_ra, crab_dec = crab_coordinates.ra.deg, crab_coordinates.dec.deg
 
-def loadCrabIMG(path: str):
+def loadCrabIMG(path: str, fitting: bool=False):
     cr1 = np.array([])
     vr1 = np.array([])
     sg1 = np.array([])
@@ -245,11 +245,13 @@ def loadCrabIMG(path: str):
     err1_cpsf = np.array([])
     err1_psf = np.array([])
     date1 = np.array([])
+    end1 = np.array([])
     offset1 = np.array([])
 
-    scw_data = np.loadtxt("../data/crab_scws.txt", dtype=str, usecols=(0, 1), skiprows=1, delimiter=",")
+    scw_data = np.loadtxt("../data/crab_scws.txt", dtype=str, usecols=(0, 1, 2), skiprows=1, delimiter=",")
     scw_ids = scw_data[:, 0]
     start_mjds = scw_data[:, 1].astype(float)
+    end_mjds = scw_data[:, 2].astype(float)
 
     for img in glob.glob(f"{path}/*"):
 
@@ -304,23 +306,30 @@ def loadCrabIMG(path: str):
                     acr = np.append(acr, intensities[y, x])
                     avr = np.append(avr, variances[y, x])
 
-            # Fit a Gaussian PSF
-            X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
-            x_grid, y_grid = np.meshgrid(X, Y)
+            if fitting:
+                # Fit a Gaussian PSF
+                X, Y = np.arange(0, intensities.shape[1]), np.arange(0, intensities.shape[0])
+                x_grid, y_grid = np.meshgrid(X, Y)
 
-            xy = (x_grid.ravel(), y_grid.ravel())
-            z = intensities.ravel()
+                xy = (x_grid.ravel(), y_grid.ravel())
+                z = intensities.ravel()
 
-            def Gaussian2D_fixed(xy, amplitude, xo, yo):
-                return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
+                def Gaussian2D_fixed(xy, amplitude, xo, yo):
+                    return Gaussian2D(xy, amplitude, xo, yo, np.sqrt(vr), np.sqrt(vr), 0, 0)
 
-            popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
-            popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
+                popt, pcov = curve_fit(Gaussian2D_fixed, xy, z, p0=[cr, x_int, y_int]) 
+                popt2, pcov2 = curve_fit(Gaussian2D, xy, z, p0=[cr, x_int, y_int,  np.sqrt(vr),  np.sqrt(vr), 0, 0])
             
-            cr1_cpsf = np.append(cr1_cpsf, popt[0])
-            cr1_psf = np.append(cr1_psf, popt2[0])
-            err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
-            err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+            if fitting:
+                cr1_cpsf = np.append(cr1_cpsf, popt[0])
+                cr1_psf = np.append(cr1_psf, popt2[0])
+                err1_cpsf = np.append(err1_cpsf, np.sqrt(np.diag(pcov))[0])
+                err1_psf = np.append(err1_psf, np.sqrt(np.diag(pcov2))[0])
+            else:
+                cr1_cpsf = np.append(cr1_cpsf, np.nan)
+                cr1_psf = np.append(cr1_psf, np.nan)
+                err1_cpsf = np.append(err1_cpsf, np.nan)
+                err1_psf = np.append(err1_psf, np.nan)
 
             cr1 = np.append(cr1, cr)
             vr1 = np.append(vr1, vr)
@@ -333,22 +342,25 @@ def loadCrabIMG(path: str):
             offset1 = np.append(offset1, pointing.separation(crab_coordinates).deg)
 
             # Dates
-
             if path == "../data/Crab/3-15keV/Images":
                 filename = os.path.basename(img)
                 scw_id = filename.replace("mosaic.fits", "")
                 match_idx = np.where(scw_ids == scw_id)[0]
                 mjd = start_mjds[match_idx[0]]
+                endmjd = end_mjds[match_idx[0]]
                 isot = Time(mjd, format="mjd").isot
+                endisot = Time(endmjd, format="mjd").isot
                 date1= np.append(date1, isot)
+                end1 = np.append(end1, endisot)
             else:
                 date1 = np.append(date1, header["DATE-OBS"])
+                end1 = np.append(end1, header["DATE-END"])
             
 
         except Exception as e:
             print(f"Error processing file {img}: {e}")
             continue
-    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, offset1
+    return cr1, vr1, sg1, xp1, acr1, avr1, cr1_cpsf, cr1_psf, err1_cpsf, err1_psf, date1, end1, offset1
 
 
 def loadCrabLC(path: str):
@@ -616,7 +628,7 @@ def query_image(scws: list, energy_range: tuple=(15,30), instrument: str="isgri"
 
 ## Stacking
 
-def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = '../data/jupiter_table.dat', crab_dir: str = "../data/weighted_crab_averages.txt", centering = False): 
+def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = '../data/jupiter_table.dat', crab_dir: str = "../data/weighted_crab_averages.txt", centering = False, test_noise=False): 
     # Load Jupiter data from table
     jupiter_table = ascii.read(table_dir)
     jupiter_ra = jupiter_table['jupiter_ra'].data
@@ -694,8 +706,12 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
 
             wcs = WCS(flu.header)
 
-            j_ra = jupiter_ra[idx]
-            j_dec = jupiter_dec[idx]
+            if test_noise:
+                j_ra = 88.2189254760742                                     
+                j_dec = 16.9316444396973   
+            else:
+                j_ra = jupiter_ra[idx]
+                j_dec = jupiter_dec[idx]
 
         except Exception as e:
             print(f"Failed to open {scw}: {e}")
@@ -703,7 +719,7 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
         
         try:
             if not centering:
-                body_i, body_j = [int(i) for i in wcs.world_to_pixel(SkyCoord(j_ra, j_dec, unit="deg"))]
+                body_j, body_i = [int(i) for i in wcs.world_to_pixel(SkyCoord(j_ra, j_dec, unit="deg"))]
             else:
                 # Rough WCS-based center
                 rough_i, rough_j = wcs.world_to_pixel(SkyCoord(j_ra, j_dec, unit="deg"))
@@ -718,8 +734,8 @@ def stack_images(dir: str = "../data/Jupiter/15-30keV/Images", table_dir: str = 
                     local_max = np.unravel_index(np.nanargmax(patch), patch.shape)
 
                 else:
-                    flux_patch = flu.data[di - offset : di + offset + 1, dj - offset : dj + offset + 1]
-                    var_patch  = var.data[di - offset : di + offset + 1, dj - offset : dj + offset + 1]
+                    flux_patch = flu.data[dj - offset : dj + offset + 1, di - offset : di + offset + 1]
+                    var_patch  = var.data[dj - offset : dj + offset + 1, di - offset : di + offset + 1]
                     with np.errstate(divide='ignore', invalid='ignore'):
                         snr_patch = np.where(np.isfinite(flux_patch) & np.isfinite(var_patch) & (var_patch > 0),
                                             flux_patch / np.sqrt(var_patch),
@@ -876,7 +892,7 @@ def convert_image_counts_to_flux(f_data, v_data, scw_obs_time, crab_means, crab_
     return flux_map, flux_err_map, erg_flux_map, erg_flux_err_map
 
 
-def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False):
+def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False, quality_control=False):
     s_var = None
     s_flu = None
     s_expo = None
@@ -885,7 +901,19 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
     body_lim = {}
     body_name = 'Crab'
 
-    for scw in np.sort(os.listdir(dir)):
+    stacked_count = 0
+    stacked_patches = []
+
+    if dir == "../data/Crab/3-15keV/Images":
+        bad_indices = [1, 5, 6, 11, 15, 27, 29, 33, 34, 40, 49, 52] # from visual inspection
+    else:
+        bad_indices = []
+
+    for loop_index, scw in enumerate(np.sort(os.listdir(dir))):
+        if loop_index in bad_indices:
+            print(f"Skipping {scw} due to quality control")
+            continue
+
         if scw.endswith(".fits"):
             try:
                 scw_id = scw[:16]
@@ -926,34 +954,35 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
 
                 detection_span = 20
                 di, dj = int(center_i), int(center_j)
-                frac_shift_i = center_i - di
-                frac_shift_j = center_j - dj
 
-                f_patch = flu.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
-                v_patch = var.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
-                ex_patch = expo.data[di-detection_span:di+detection_span, dj-detection_span:dj+detection_span]
+                if (dj - detection_span < 0 or dj + detection_span >= flu.data.shape[0] or
+                    di - detection_span < 0 or di + detection_span >= flu.data.shape[1]):
+                    print(f"Skipping {scw}: patch indices out of bounds")
+                    continue
+
+                f_patch = flu.data[dj-detection_span:dj+detection_span, di-detection_span:di+detection_span]
+                v_patch = var.data[dj-detection_span:dj+detection_span, di-detection_span:di+detection_span]
+                ex_patch = expo.data[dj-detection_span:dj+detection_span, di-detection_span:di+detection_span]
 
                 if f_patch.shape != (2 * detection_span, 2 * detection_span):
                     print(f"Skipping {scw} due to crop shape: {f_patch.shape}")
                     continue
-
-                # Apply sub-pixel shifts
-                f_patch = shift(f_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
-                v_patch = shift(v_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
-                ex_patch = shift(ex_patch, shift=(-frac_shift_i, -frac_shift_j), order=1, mode='nearest')
 
                 if s_var is None:
                     s_var = v_patch.copy()
                     s_flu = f_patch.copy()
                     s_expo = ex_patch.copy()
                 else:
-                    m = ~np.isnan(v_patch)
+                    m = ~np.isnan(v_patch) & ~np.isnan(f_patch)
                     m &= v_patch > 0
 
                     s_flu[m] = (f_patch[m]/v_patch[m] + s_flu[m]/s_var[m]) / (1/v_patch[m] + 1/s_var[m])
                     s_var[m] = 1 / (1/v_patch[m] + 1/s_var[m])
                     s_expo[m] += ex_patch[m]
                     total_max_isgri_exp += np.nanmax(expo.data)
+
+                stacked_count += 1
+                stacked_patches.append(f_patch / np.sqrt(v_patch))
 
                 body_lim[scw] = dict(
                     ic=np.nanmean(np.sqrt(v_patch)), 
@@ -964,9 +993,41 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
                 print(f"Failed to process {scw_id}: {e}")
                 continue
 
+    print(f"Total stacked images: {stacked_count}")
+
     if plot:
         plot_span = 20
         extent = [-plot_span, plot_span, -plot_span, plot_span]
+
+        if quality_control:
+            # Determine grid size dynamically (e.g., 5x5, 6x6)
+            num_patches = len(stacked_patches)
+            ncols = int(np.ceil(np.sqrt(num_patches)))
+            nrows = int(np.ceil(num_patches / ncols))
+
+            fig, axs = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows))
+
+            for idx, patch in enumerate(stacked_patches):
+                row = idx // ncols
+                col = idx % ncols
+                ax = axs[row, col] if nrows > 1 else axs[col]
+
+                im = ax.imshow(patch, origin='lower', cmap='viridis', extent=extent)
+                ax.set_title(f"Patch {idx + 1}")
+                ax.axis('off')
+
+            # Hide any empty subplots
+            for idx in range(len(stacked_patches), nrows * ncols):
+                row = idx // ncols
+                col = idx % ncols
+                ax = axs[row, col] if nrows > 1 else axs[col]
+                ax.axis('off')
+
+            fig.suptitle("Individual Stacked Image Patches", fontsize=16)
+            plt.tight_layout()
+        plt.show()
+
+        
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
 
@@ -978,7 +1039,7 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
         plt.xlabel(r"Pixel X", fontsize=14)
         plt.ylabel(r"Pixel Y", fontsize=14)
         cbar = plt.colorbar()
-        cbar.set_label(r"$\mathrm{SNR}$", fontsize=14)
+        cbar.set_label(r"$\mathrm{S/N}$", fontsize=14)
         cbar.ax.tick_params(labelsize=14)
         plt.tick_params(which='both', labelsize=14, direction="in", color='white')
         plt.gca().xaxis.set_ticks_position('both')
@@ -987,9 +1048,17 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.tight_layout()
 
+        energy_range = ""
+        if dir == "../data/Crab/3-15keV/Images":
+            energy_range = "3-15keV"
+        elif dir == "../data/Crab/15-30keV/Images":
+            energy_range = "15-30keV"
+        elif dir == "../data/Crab/30-60keV/Images":
+            energy_range = "30-60keV"
+
         if save:
-            plt.savefig("../data/Figures/Crab-SNR-map.pdf", bbox_inches='tight', dpi=300)
-            plt.savefig("/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Crab-SNR-map.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig(f"../data/Figures/Crab-SNR-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Crab-SNR-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
             print(f"Saved Crab SNR map.")
 
         # Define common settings
@@ -1003,13 +1072,18 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
         plt.xlabel("Pixel X", fontsize=label_fontsize)
         plt.ylabel("Pixel Y", fontsize=label_fontsize)
         cbar = plt.colorbar()
-        cbar.set_label("Relative Exposure [s]", fontsize=label_fontsize)
+        cbar.set_label("Cumulative Effective Exposure [s]", fontsize=label_fontsize)
         cbar.ax.tick_params(labelsize=tick_fontsize)
         plt.tick_params(which='both', labelsize=tick_fontsize, direction="in", color='white')
         plt.gca().xaxis.set_ticks_position('both')
         plt.gca().yaxis.set_ticks_position('both')
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.tight_layout()
+
+        if save:
+            plt.savefig(f"../data/Figures/Crab-EXP-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Crab-EXP-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
+            print(f"Saved Crab EXP map.")
 
         # Square root of the variance map
         plt.figure(figsize=(8, 6))
@@ -1025,6 +1099,11 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
         plt.gca().yaxis.set_ticks_position('both')
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.tight_layout()
+
+        if save:
+            plt.savefig(f"../data/Figures/Crab-STD-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
+            plt.savefig(f"/mnt/c/Users/luoji/Desktop/Master EPFL/TPIVb/Figures/Crab-STD-map-{energy_range}.pdf", bbox_inches='tight', dpi=300)
+            print(f"Saved Crab STD map.")
 
         # Histogram of S/N
         # plt.figure(figsize=(8, 6))
@@ -1051,6 +1130,7 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
 
         # Normalize S/N histogram
         s_n_values = (s_flu / np.sqrt(s_var)).flatten()
+        s_n_values = s_n_values[np.isfinite(s_n_values)]
         hist, bin_edges = np.histogram(s_n_values, bins=30, density=True)
         bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
 
@@ -1097,24 +1177,22 @@ def stack_crab(dir: str, plot=True, statistics=True, save=False, centering=False
 
 from scipy.integrate import quad
 
-def sensitivity(interp_func, E_ranges: list = [(15, 30), (30, 60), (3, 15)], observation_times: list = [1284044.976366043, 2314640.976366043, 297224.19699954987]):
+def sensitivity(interp_func, E_ranges: list = [(15, 30), (30, 60)], observation_times: list = [1284044.976366043, 2314640.976366043], reference_time: float = 77):
 
     integrated_results = []
 
     for E_min, E_max in E_ranges:
         integrated_sensitivity, error = quad(interp_func, E_min, E_max)
-        print(f"Integrated sensitivity from {E_min} to {E_max} keV for a 77 ks observation time: {integrated_sensitivity:.3e} +- {error:.3e} photons/cm²/s")
+        print(f"Integrated sensitivity from {E_min} to {E_max} keV for a {reference_time} ks observation time: {integrated_sensitivity:.3e} +- {error:.3e} photons/cm²/s")
         integrated_results.append((integrated_sensitivity, error))
 
     print()
-
-    observation_times = [1284044.976366043, 2314640.976366043, 297224.19699954987] # s
 
     sensitivity_upper_limits = []
 
     for (integrated_sensitivity, error), observation_time in zip(integrated_results, observation_times):
         observation_time_ks = observation_time / 1000  # convert to ks
-        scale = np.sqrt(77 / observation_time_ks)
+        scale = np.sqrt(reference_time / observation_time_ks)
         scaled_sensitivity = integrated_sensitivity * scale
         scaled_error = error * scale
         print(f"Scaled sensitivity for {observation_time_ks:.0f} ks observation time: {scaled_sensitivity:.3e} +- {scaled_error:.3e} photons/cm²/s")
