@@ -364,3 +364,36 @@ Meeting notes:
 - upper limit is the error on the average (weighted average) * how many sigma you want (3 generally)
 - stacked map error should be compatible with this error
 - for each energy range we can plot two upper limits: persistent and sporadic
+
+
+Article:
+
+ScWs (RRRR): 0267, 0268, 0270, 0272, 0273, 0321, 0594, 0596, 0599, 0600, 0601, 0604, 0607, 0663, 0668, 0740,
+1268, 1269, 1278, 1327, 1328, 1753, 1754, 1760, 1761, 1762, 1763, 1764, 1765, 2059, 2060, 2125, 2128, 2129, 2130,
+2138, 2139, 2140, 2141, 2142, 2144, 2145, 2146, 2149, 2150, 2151, 2152, 2153, 2205, 2213, 2366, 2367, 2368, 2369,
+2370, 2371, 2372
+
+Ecliptic observers: Siegert
+
+
+Extending the analysis to 200keV -----------------------------------------------------------
+
+~ 09/2025 - 10/2025
+1. Query Crab data from 60-100keV and from 100-200keV
+2. Query Jupiter data from same ranges
+
+!!! How does width of range affect data? !!!
+
+3. Run statistical analyses on both ranges.
+
+~ 10/2025 - 11/2025
+4. Present results to Volodymyr, Jan-Uwe & Thomas
+5. Following any comments, finish working on data
+
+~ 11/2025 - 01/2025
+6. Create a fresh paper template and add collaborators.
+7. Write paper, keeping in mind notes of Thomas & Jan-Uwe.
+7bis. Update code with clear comments and make data available (Zenodo).
+8. Publish!
+
+!!! A&A journal may no longer be free. Need to check what is free through EPFL. !!!
