@@ -380,6 +380,7 @@ Extending the analysis to 200keV -----------------------------------------------
 
 ~ 09/2025 - 10/2025
 1. Query Crab data from 60-100keV and from 100-200keV
+    [X] 60-100 keV
 2. Query Jupiter data from same ranges
 
 !!! How does width of range affect data? !!!
