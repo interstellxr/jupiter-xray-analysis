@@ -28,7 +28,13 @@ TPIVb project at EPFL with the purpose of analyzing data provided by the INTEGRA
 6. If needed, stack images of multiple ScWs using 'stacking.ipynb' to increase the SNR.
 7. 'spectra.ipynb' can be used to extract and plot spectra from csv files, and add upper limits on the plots.
 
-## Some important links
+## Requirements
+- Python 3.x
+- oda-api (install using `pip install oda_api`)
+- astroquery (install using `pip install astroquery`)
+- astropy (install using `pip install astropy`)
+
+## Some documentation links
 API documentation: https://oda-api.readthedocs.io/en/latest/  
 MMODA: https://www.astro.unige.ch/mmoda/  
 INTEGRAL notes: [https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?tab=t.0](https://docs.google.com/document/d/18VBsLnJf_uufGxqk4uSUYD_vNk3Ti_Gu5luSPAe-g2k/edit?usp=sharing)  
