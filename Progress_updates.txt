@@ -381,20 +381,23 @@ Extending the analysis to 200keV -----------------------------------------------
 ~ 09/2025 - 10/2025
 1. Query Crab data from 60-100keV and from 100-200keV
     [X] 60-100 keV
+    [X] 100-200 keV
 2. Query Jupiter data from same ranges
+    [X] 60-100 keV
+    [ ] 100-200 keV
 
 !!! How does width of range affect data? !!!
 
+~ 11/2025 - 12/2025
 3. Run statistical analyses on both ranges.
-
-~ 10/2025 - 11/2025
 4. Present results to Volodymyr, Jan-Uwe & Thomas
 5. Following any comments, finish working on data
 
-~ 11/2025 - 01/2025
+~ 12/2025 - 01/206
 6. Create a fresh paper template and add collaborators.
 7. Write paper, keeping in mind notes of Thomas & Jan-Uwe.
 7bis. Update code with clear comments and make data available (Zenodo).
 8. Publish!
 
 !!! A&A journal may no longer be free. Need to check what is free through EPFL. !!!
+    MNRAS??? 

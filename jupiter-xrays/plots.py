@@ -38,6 +38,9 @@ def plot_errorbar(date, y, var, xlabel=r"Observation Year", ylabel=r"Count Rate 
 
     plt.xticks(rotation=45, fontsize=14)
 
+    # Ignore outliers for y-limits
+    plt.ylim(np.percentile(y, 5) - 0.1*std, np.percentile(y, 95) + 0.1*std)
+
     plt.tick_params(which='both', labelsize=14, direction='in')
     plt.gca().xaxis.set_ticks_position('both')
     plt.gca().yaxis.set_ticks_position('both')
